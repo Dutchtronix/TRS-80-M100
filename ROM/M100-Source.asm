@@ -1,5 +1,5 @@
 ;
-; TRS-80 Model 100 ROM Source Code by JdR (Dutchtronix)
+; TRS-80 Model 100 ROM Source Code Listing by JdR (Dutchtronix)
 ;
 ; Based on VirtualT disassembly using an updated version of VirtualT
 ; All generated numeric labels (code and data) have been replaced with
