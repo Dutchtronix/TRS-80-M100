@@ -1,29 +1,29 @@
  TRS-80 Model 100 ROM Source Code by JdR (Dutchtronix)
 
- Based on VirtualT disassembly using an updated version of VirtualT
+ Based on VirtualT disassembly using an updated version of VirtualT.
+ 
  All generated numeric labels (code and data) have been replaced with
  (hopefully) meaningful names.
 
- Other sources:
- 	Ken Pettit M100 disassembly m100_dis_2013.txt
-	Steven Adolph VT100 code
-	Steven Adolph HWSCROLL code
-	Microsoft Basic-80 5.2 Source
-	https://bitchin100.com/wiki/index.php?title=RAM_File_Handling
-	https://bitchin100.com/wiki/index.php?title=Low_Level_Filesystem_Access
-	https://bitchin100.com/wiki/index.php?title=Description_of_Machine_Code_File_Handling_Routines
-	https://bitchin100.com/wiki/index.php?title=Model_100/102_RAM_Pointers
+ Other sources:</br>
+ 	- Ken Pettit M100 disassembly m100_dis_2013.txt </br>
+	- Steven Adolph VT100 code</br>
+	- Steven Adolph HWSCROLL code</br>
+	- Microsoft Basic-80 5.2 Source</br>
+	- https://bitchin100.com/wiki/index.php?title=RAM_File_Handling</br>
+	- https://bitchin100.com/wiki/index.php?title=Low_Level_Filesystem_Access</br>
+	- https://bitchin100.com/wiki/index.php?title=Description_of_Machine_Code_File_Handling_Routines</br>
+	- https://bitchin100.com/wiki/index.php?title=Model_100/102_RAM_Pointers</br>
 
 	Microsoft Basic-80 version N82
 
- When choosing the "Original M100 configuration" option below, the resulting binary is identical
- to the M100 ROM (patched for Y2K)
+ When choosing the "Original M100 configuration" option below, the resulting binary is identical to the M100 ROM (patched for Y2K)
  The code is relocatable but is not adviced since many entry points addresses have been published.
 
  Other versions of the M100 Rom can be produced.
 
  	VT100
-	This version supports screen text output to the serial port.
+	This version supports screen text output to the serial port. 
 	Best results if the receiving end is some kind of MVT100 supported device (Steven Adolph)
 	the MVT100 C# app in Windows works great.
 	This version disables support for the built-in M100 Modem
@@ -54,11 +54,13 @@
 	HWPatch.asm
 	
  Notes
-	VirtualT does not emulate telephone modem hardware completely.
-	Enabling the relay and modem are ignored.
+ 
+VirtualT does not emulate telephone modem hardware completely.
+Enabling the relay and modem are ignored.</br>
 
-	Using TERM with no emulated serial port hangs VirtualT because it VirtualT
-	never returns ready on the serial port. This can easily be fixed in VirtualT
+
+Using TERM with no emulated serial port hangs VirtualT because it VirtualT
+never returns ready on the serial port. This can easily be fixed in VirtualT</br>
 
 Please inform me of mistakes or suggestions: jdr at dutchtronix dot com
 
