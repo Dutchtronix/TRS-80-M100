@@ -4,7 +4,7 @@
 ; define labels used in the VT100 code
 ;
 coldboot	EQU	L_RESET_TIME			;cold boot
-puhook		EQU	BOOTHK_R		        
+;puhook		EQU	BOOTHK_R		        
 himem		EQU	HIMEM_R			        ;location of himem
 initsys		EQU	L_BEEP_RESET            
 FCERR 		EQU	R_GEN_FC_ERROR	        ;Generate FC error
@@ -88,19 +88,10 @@ hk_rst4:
 ;
 ;ok so turn off the cursor
 ;
-		push PSW						;Save byte to be printed on Stack
-
-		if 1
-		mvi	a,'Q'						;turn cursor off escape sequence
-		call sendESCa
-		else
-		MVI	C,1BH						;Prepare to send ESC sequence
-		call sendc						;Send byte in C to the DVI SCREEN Mailbox
-		MVI	C,51H						;Load ESC sequece to turn off cursor perhaps - yes "Q"
-		call sendc						;Send byte in C to the DVI SCREEN Mailbox
-		endif
-
-		POP	PSW							;Restore byte to be printed from stack
+		push	PSW						;Save byte to be printed on Stack
+		mvi		a,'Q'					;turn cursor off escape sequence
+		call	sendESCa
+		POP		PSW						;Restore byte to be printed from stack
 		RET								;Return here to print character on LCD
 
 ;
@@ -218,7 +209,11 @@ hk_screen:
 	rz									;if called from F8 process (back to MENU), restore newconsole, leave aux_console
 	cpi		080h						;BASIC file if HL points to directory
 	rz									;if called from F8 process (back to MENU), restore newconsole, leave aux_console
+
+	if 0
+; FCERR recovers the stack and we need a byte
 	pop		H							;remove jmp address
+	endif
 
 	jmp		FCERR						;if not a "1" or a "2" then FC error
 ;
