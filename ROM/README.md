@@ -15,7 +15,7 @@
 	- https://bitchin100.com/wiki/index.php?title=Description_of_Machine_Code_File_Handling_Routines</br>
 	- https://bitchin100.com/wiki/index.php?title=Model_100/102_RAM_Pointers</br>
 
-	Microsoft Basic-80 version N82
+Microsoft Basic-80 version N82
 
  When choosing the "Original M100 configuration" option below, the resulting binary is identical to the M100 ROM (patched for Y2K)
  The code is relocatable but is not adviced since many entry points addresses have been published.
@@ -43,7 +43,7 @@
  Assemble this file using "Makroassembler AS v1.42" by Alfred Arnold, ported to windows in a package
  called "aswcurr" http://john.ccac.rwth-aachen.de:8000/as/:
 
-	..aswcurr\bin\asw -i . -cpu 8085UNDOC -L <M100-Source>.asm
+	..\aswcurr\bin\asw -i . -cpu 8085UNDOC -L <M100-Source>.asm
 	..\aswcurr\bin\p2bin.exe <M100-Source> -r $0000-$7fff
 
  There are 4 source files:
