@@ -1,29 +1,6 @@
 ;
 ; VT100 code to be included in M100 ROM
 ;
-; define labels used in the VT100 code
-;
-coldboot	EQU	L_RESET_TIME			;cold boot
-;puhook		EQU	BOOTHK_R		        
-himem		EQU	HIMEM_R			        ;location of himem
-initsys		EQU	L_BEEP_RESET            
-FCERR 		EQU	R_GEN_FC_ERROR	        ;Generate FC error
-L5char		EQU	R_CHAR_PLOT_5	        ;level 5 character print
-evalbuf		EQU	R_EVAL_EXPR_2	        ;Evaluate the expression in the buffer pointed to by HL
-SNERR		EQU	R_GEN_SN_ERROR	        ;Generate Syntax error
-HCHGET		EQU	HCHGET_R		        ;CHGET hook entry
-HCHSNS		EQU	HCHSNS_R		        ;CHSNS hook entry
-HCHPUT		EQU	HCHPUT_R		        ;CHPUT (print) hook entry
-txtload		EQU	L_TEXT_BYTE		        ;Load Address of call within TEXT program
-blnk		EQU	L_BLINK_LCD		        ;Turn off background task, blink & reinitialize cursor blink time
-labelprot	EQU	LINPROT_R		        ;Label line protect status
-SYSrowcol	EQU	CSRY_R			        ;SYS current row/col
-SYSmaxrow	EQU LINCNT_R		        ;MAX SYS row col count
-SYSmaxcol	EQU	LINWDT_R		        ;MAX SYS col count
-PRTrowcol	EQU	LCDCSY_R		        ;last printed cursor row col
-CLEAR1		EQU	L_EVAL_POS_EXPR	        ;called by Clear hook handler
-filebufptr	EQU	MEMSIZ_R		        ;File buffer area pointer
-;
 ; Unused RAM locations if !HWMODEM (required for VT100INROM)
 ;
 ;	MDMSPD_R		Dial speed (1=10pps, 2=20pps)
@@ -44,65 +21,64 @@ var1		EQU	0FFFEH					;Flag. Initialized to 1 on cold boot
 ESCY		EQU		0FDF8H
 
 dbstart:
-		call initsys					;stop beep, reset 8155
+	call	 L_BEEP_RESET				;stop beep, reset 8155
 										; cursor status, FF = on, 0 = off
 dbstart1:
-		JMP	coldboot					;Jump into Cold boot routine to set YEAR to 0.  Why???					
+	JMP		L_RESET_TIME				;Jump into Cold boot routine to set YEAR to 0.  Why???					
 ;
 ;RST7 44H - CRT PUT Hook
 ;
 hk_crtput:
-		POP	H
-		POP	PSW							;Get Byte to be sent from stack
-		push PSW						;But byte back on stack
-		call snda2dvi					;Call routine to send A to DVI SCREEN Mailbox
-		JMP	R_POP_ALL_REGS				;Pop AF, BC, DE, HL from stack
+	POP		H
+	POP		PSW							;Get Byte to be sent from stack
+	push	PSW							;Put byte back on stack
+	call	snda2dvi					;Call routine to send A to DVI SCREEN Mailbox
+	JMP		R_POP_ALL_REGS				;Pop AF, BC, DE, HL from stack
 ;
 ;RST7 40H - CRT OPEN Hook
 ;
 hk_crtopen:
-		POP	PSW	
-		JMP	R_LCD_OPEN		;LCD and PRT file open routine			
+	POP		PSW	
+	JMP		R_LCD_OPEN					;LCD and PRT file open routine			
 ;
 ;RST7 08H - Print A to SCREEN hook handler 
 ; all printing loops through this routine, LCD or CRT
 ; include function to turn off cursor on CRT when console is LCD
 ;
 hk_rst4:
-		MOV	C,A							;Save byte to be printed in C
-		LDA	CONDEV_R					;New Console device flag
-		ORA	A							;Test if New Console flag set
-		MOV	A,C							;Get byte to be printed in A
-		
-		LXI	H,var1						;Load cursor status
-		JNZ	hk_rst4_2					;Jump to Print byte to SCREEN if New Console flag set
+	MOV	C,A								;Save byte to be printed in C
+	LDA	CONDEV_R						;New Console device flag
+	ORA	A								;Test if New Console flag set
+	MOV	A,C								;Get byte to be printed in A	
+	LXI	H,var1							;Load cursor status
+	JNZ	hk_rst4_2						;Jump to Print byte to SCREEN if New Console flag set
 ;
 ; CONDEV_R == 0
 ; new console device flag reset, so display on LCD (SCREEN 0)
 ;
-		MOV	A,M							;Get cursor status flag in A
-		MVI	M,00H						;indicate cursor is to be off. TODO var1 ever reset? Reset to 1 on warm reboot?
-		ANA	A							;test was it off already?
-		MOV	A,C							;Get byte to Print in A 
-		RZ								;Return here to print character on LCD, cursor was turned off already
+	MOV		A,M							;Get cursor status flag in A
+	MVI		M,00H						;indicate cursor is to be off. TODO var1 ever reset? Reset to 1 on warm reboot?
+	ANA		A							;test was it off already?
+	MOV		A,C							;Get byte to Print in A 
+	RZ									;Return here to print character on LCD, cursor was turned off already
 ;
 ;ok so turn off the cursor
 ;
-		push	PSW						;Save byte to be printed on Stack
-		mvi		a,'Q'					;turn cursor off escape sequence
-		call	sendESCa
-		POP		PSW						;Restore byte to be printed from stack
-		RET								;Return here to print character on LCD
+	push	PSW							;Save byte to be printed on Stack
+	mvi		a,'Q'						;turn cursor off escape sequence
+	call	sendESCa
+	POP		PSW							;Restore byte to be printed from stack
+	RET									;Return here to print character on LCD
 
 ;
 ; IN:
 ;	HL		ptr to cursor status variable
 ;
 hk_rst4_2:
-		MVI	M,0FFH						;Indicate DVI SCREEN initialized (or maybe a byte printed)???
-		LXI	H,R_POP_ALL_REGS			;pop all registers on return
-		XTHL							;swap HL with [SP]
-		jmp	snda2dvi	
+	MVI		M,0FFH						;Indicate DVI SCREEN initialized (or maybe a byte printed)???
+	LXI		H,R_POP_ALL_REGS			;pop all registers on return
+	XTHL								;swap HL with [SP]
+	jmp		snda2dvi	
 
 ;
 ;RST7 04H - CHGET.  Test if called from TEXT program and intialize SCREEN.
@@ -110,25 +86,23 @@ hk_rst4_2:
 hk_chget:
 ;
 ; check if we were called from R_TEXT_GET_NEXT_BYTE().
-; the call to R_WAIT_KEY() pushes the return address (L_TEXT_BYTE/txtload)
+; the call to R_WAIT_KEY() pushes the return address (L_TEXT_BYTE/L_TEXT_BYTE)
 ; plus 3 word registers plus L_WAIT_KEY_1, so there are 5 words on the stack
 ;
-	LXI	H,000AH							;Prepare to inspect stack 10 bytes in the past
-	DAD	SP								;Get SP + 10 in HL
-	MOV	A,M								;Get LSB of the address that called us
-	INX	H								;Increment to MSB
-	MOV	H,M								;Get MSB of the address that called us
-	MOV	L,A								;Move LSB to HL
-	LXI	D,txtload						;Load Address of call within TEXT program
-	RST	3								;Compare DE and HL - Test if called from TEXT
+	LXI		H,000AH						;Prepare to inspect stack 10 bytes in the past
+	DAD		SP							;Get SP + 10 in HL
+	MOV		A,M							;Get LSB of the address that called us
+	INX		H							;Increment to MSB
+	MOV		H,M							;Get MSB of the address that called us
+	MOV		L,A							;Move LSB to HL
+	LXI		D,L_TEXT_BYTE				;Load Address of call within TEXT program
+	RST		3							;Compare DE and HL - Test if called from TEXT
 	RNZ									;Return if not called from TEXT
-	
-	call R_TURN_CURSOR_OFF 				;Turn the cursor off
-	LDA	CONDEV_R							;New Console device flag
-	ANA	A								;Test if the Console has been initialized already
+	call	R_TURN_CURSOR_OFF 			;Turn the cursor off
+	LDA		CONDEV_R					;New Console device flag
+	ANA		A							;Test if the Console has been initialized already
 	RZ									;Return if console already initialized
-
-	JMP	blnk	
+	JMP		L_BLINK_LCD	
 		
 ;
 ;RST7 3CH - Initialize New Console for LCD/DVI Hook
@@ -136,36 +110,28 @@ hk_chget:
 ;
 hk_newconsole:
 
-	POP	H
-	LDA	labelprot						;Get Label line protect status
-	push PSW							;Save current Label Line Protect status to stack
-	
-	XRA	A								;Prepare to clear Label Line Protect status
-	STA	labelprot						;Clear Label line protect status
-	
-	lhld SYSrowcol						;SYS current row/col
-	push H								;Push current cursor row/col to stack
-	
-	lhld PRTrowcol						;last printed cursor row col
-	shld SYSrowcol						;SYS current row/col
-	
-	LXI	H,2808H							;Prepare to configure for 8 ROWS, 40 COLS
-	shld SYSmaxrow						;MAX SYS row col count	
-	call L5char							;Character plotting level 5. Handle ESC sequences & call level 6
-										;clears label line, 
-				
-	lhld SYSrowcol						;SYS current row/col
-	shld PRTrowcol						;last printed cursor row col
-	
-	lhld DVIMAXROW_R					;MAX DVI row col count
-	shld SYSmaxrow						;MAX SYS row col count
-	
-	POP	H								;Restore original Cursor ROW,COL from stack
-	shld SYSrowcol						;SYS current row/col
-	POP	PSW								;Get original Label Line protect from stack
-	STA	labelprot						;Save as current Label line protect status
+	POP		H
+	LDA		LINPROT_R					;Get Label line protect status
+	push	PSW							;Save current Label Line Protect status to stack
+	XRA		A							;Prepare to clear Label Line Protect status
+	STA		LINPROT_R					;Clear Label line protect status
+	lhld	CSRY_R						;SYS current row/col
+	push	H							;Push current cursor row/col to stack
+	lhld	LCDCSY_R					;last printed cursor row col
+	shld	CSRY_R						;SYS current row/col
+	LXI		H,2808H						;Prepare to configure for 8 ROWS, 40 COLS
+	shld	LINCNT_R					;MAX SYS row col count	
+	call	R_CHAR_PLOT_5				;Character plotting level 5. Handle ESC sequences & call level 6
+;clears label line, 
+	lhld	CSRY_R						;SYS current row/col
+	shld	LCDCSY_R					;last printed cursor row col
+	lhld	DVIMAXROW_R					;MAX DVI row col count
+	shld	LINCNT_R					;MAX SYS row col count
+	POP		H							;Restore original Cursor ROW,COL from stack
+	shld	CSRY_R						;SYS current row/col
+	POP		PSW							;Get original Label Line protect from stack
+	STA		LINPROT_R					;Save as current Label line protect status
 	RET	
-	
 ;
 ;RST7 3EH - SCREEN command hook handler.  Initializes DVI SCREEN mode.
 ;	
@@ -178,7 +144,7 @@ hk_newconsole:
 ;	enter with HL pointing to comma of 0,0 argumemnt on stack
 ;
 hk_screen:
-	call	blnk						;Turn off background task, blink & reinitialize cursor blink time
+	call	L_BLINK_LCD					;Turn off background task, blink & reinitialize cursor blink time
 	pop		b							;get return vector
 	pop		h							;get txt ptr or directory ptr
 	push	h
@@ -198,7 +164,6 @@ hk_screen:
 
 	cpi		'1'
 	jz		screen_RS232				;if 1 then jump to RS-232 output definition
-
 	inx		h							;next
 	mov		a,m
 	lxi		h,setnewcons				;jmp address for conditional calls
@@ -209,13 +174,8 @@ hk_screen:
 	rz									;if called from F8 process (back to MENU), restore newconsole, leave aux_console
 	cpi		080h						;BASIC file if HL points to directory
 	rz									;if called from F8 process (back to MENU), restore newconsole, leave aux_console
-
-	if 0
-; FCERR recovers the stack and we need a byte
 	pop		H							;remove jmp address
-	endif
-
-	jmp		FCERR						;if not a "1" or a "2" then FC error
+	jmp		R_GEN_FC_ERROR				;if not a "1" or a "2" then FC error
 ;
 ; console request valid
 ; aux console = 0 means RS232
@@ -231,7 +191,7 @@ setnewcons:
 	STA		CONDEV_R					;New Console device flag
 	lhld	DVIROWCOL_R					;DVI current ROW,COL
 	push	H							;Save current cursor row, col on stack
-	shld	SYSrowcol					;update SYS current row/col
+	shld	CSRY_R						;update SYS current row/col
 	call	R_RESUME_AUTO_SCROLL		;Resume automatic scrolling
 	call	R_TURN_CURSOR_OFF			;Turn the cursor off
 	lhld	DVIMAXROW_R					;MAX DVI row col count
@@ -255,7 +215,7 @@ setnewcons:
 	push	PSW
 	push	H
 	push	D
-	LDA		labelprot					;Label line protect status
+	LDA		LINPROT_R					;Label line protect status
 	ora		a							;Test if Function Key line is visible
 	CNZ		R_DISP_FKEY_LINE			;calif visible: Display function key line
 	pop		d							;sys max row, col
@@ -293,13 +253,13 @@ snda2dvi:
 	JZ		lcdconf						;Jump if not new console - reconfigure for LCD here
 										;CRT still selected
 	
-	call	L5char						;Character plotting level 5. Handle ESC sequences & call level 6
+	call	R_CHAR_PLOT_5				;Character plotting level 5. Handle ESC sequences & call	level 6
 										;not sure what this does
 										;perhaps the POP above gets this L5 routine to update cursor location
 ;
 ; update location
 ;
-	lhld	SYSrowcol					;SYS current row/col
+	lhld	CSRY_R						;SYS current row/col
 	shld	DVIROWCOL_R					;DVI current ROW,COL
 	RET	
 
@@ -334,15 +294,18 @@ sendc:
 ;
 ; first test for escape sequence occurring
 ;
+	lxi		h,mapM100ESC				;set conditional jump address
+	push	h
 	lda		ESC_pending
 	ora		a
 	mov		a,c							;place byte to print in A
-	jnz		mapM100ESC					;escape is pending. map M100 Escape code to VT100/VT52 code
+	rnz									;escape is pending. map M100 Escape code to VT100/VT52 code
 	cpi		0Ch							;no escape pending. is the character 0CH
-	jz		mapM100ESC					;match and send characters
+	rz									;match and send characters
 	cpi		0Bh							;no escape pending. is the character 0BH
-	jz		mapM100ESC					;match and send characters
+	rz									;match and send characters
 	cpi		01Bh						;no escape pending. is the character escape?
+	pop		h							;stack cleanup
 	jnz		senda						;value to print in C and A
 	mvi		a,01
 	sta		ESC_pending					;indicate an ESC is pending
@@ -510,26 +473,26 @@ convertnum:
 ;Configure for LCD output format (8 lines, 40 columns)
 ;
 lcdconf:
-	LDA		labelprot					;Label line protect status
+	LDA		LINPROT_R					;Label line protect status
 	push	PSW							;Save old Label Line protect status on stack
 	XRA		A							;Prepare to clear Label line protect status
-	STA		labelprot					;Clear Label line protect status
-	lhld	SYSrowcol					;SYS current row/col
+	STA		LINPROT_R					;Clear Label line protect status
+	lhld	CSRY_R						;SYS current row/col
 	push	H							;Save current Cursor / Row to stack
 	lhld	DVIROWCOL_R					;DVI current ROW,COL
-	shld	SYSrowcol					;SYS current row/col
+	shld	CSRY_R						;SYS current row/col
 	lhld	DVIMAXROW_R					;MAX DVI row col count
-	shld	SYSmaxrow					;MAX SYS row col count
-	call	L5char						;Character plotting level 5. Handle ESC sequences & call level 6
-										;clear label line
-	lhld	SYSrowcol					;SYS current row/col
+	shld	LINCNT_R					;MAX SYS row col count
+	call	R_CHAR_PLOT_5				;Character plotting level 5. Handle ESC sequences & call	level 6
+; clear label line
+	lhld	CSRY_R						;SYS current row/col
 	shld	DVIROWCOL_R					;DVI current ROW,COL
 	LXI		H,2808H						;Switch to 40 COL, 8 ROW mode
-	shld	SYSmaxrow					;MAX SYS row col count
+	shld	LINCNT_R					;MAX SYS row col count
 	POP		H							;Get original current Cursor/Row from stack
-	shld	SYSrowcol					;SYS current row/col
+	shld	CSRY_R						;SYS current row/col
 	POP		PSW							;Get Original Lable Protect Status from stack
-	STA		labelprot					;Save as current Label line protect status
+	STA		LINPROT_R					;Save as current Label line protect status
 	RET	
 ;	
 ; Boot-up Hook. This hook is called by the Main ROM at Boot-up. (We Hooked it).
@@ -538,37 +501,37 @@ lcdconf:
 phook:
 	DI									;Disable interrupts during initialization	
 phook1:
-	LXI	B,1000							;Setup Delay counter value	
+	LXI		B,1000						;Setup Delay counter value	
 phook2:
-	call R_CHK_SHIFT_BREAK 				;Check if SHIFT-BREAK is being pressed	
-	JC	phook1							;Keep looping until SHIFT-BREAK released	
-	DCX	B				        	    ;Decrement count (16-bit decrement)	
-	MOV	A,B				        	    ;test 16-bit count	
-	ORA	C
-	JNZ	phook2			        	    ;Keep looping until count = 0	
-	POP	H				         	 	;Get address from where we were called	
-	push H				        	    ;Put the address back so we can RET properly
+	call	R_CHK_SHIFT_BREAK 			;Check if SHIFT-BREAK is being pressed	
+	JC		phook1						;Keep looping until SHIFT-BREAK released	
+	DCX		B				            ;Decrement count (16-bit decrement)	
+	MOV		A,B				            ;test 16-bit count	
+	ORA		C
+	JNZ		phook2			            ;Keep looping until count = 0	
+	POP		H				         	;Get address from where we were called	
+	push	H				            ;Put the address back so we can RET properly
 	LXI		D,L_PWR_DOWN_BOOT			;Prepare to test if we were called from Auto PowerDown
 	COMPAR								;compare return address and L_PWR_DOWN_BOOT
 	RNZ									;If not called from Auto-PowerDown reboot routine, then just exit
-	LDA	CONDEV_R				        ;New Console device flag	
+	LDA		CONDEV_R			        ;New Console device flag	
 	ANA	A					            ;Test if Console has been intialized	
 	RZ						            ;Return if it has	
 ;
 ; We only get here if we rebooted after an auto power shutdown and CONDEV_R != 0
 ;									
-	POP	H					            ;Get address where we would return
-	LXI	H,L_PWR_DOWN_BOOT2				;or jmp there without pushing this address
-	push H					            ;Push new RET address to stack	
+	POP		H					        ;Get address where we would return
+	LXI		H,L_PWR_DOWN_BOOT2			;or jmp there without pushing this address
+	push	H					        ;Push new RET address to stack	
 ; copy of some of the ROM code here. See "reboot after auto power down"					
-	call L_BOOT_2
-	lhld SAVEDSP_R
-	push H                          
-	call L_LCDrefresh					;Refresh LCD from LCD RAM
+	call	L_BOOT_2
+	lhld	SAVEDSP_R
+	push	H                          
+	call	L_LCDrefresh				;Refresh LCD from LCD RAM
 ; start added code
-	call blnk							;This is new! Turn off background task, reinitialize cursor blink time
+	call	L_BLINK_LCD					;This is new! Turn off background task, reinitialize cursor blink time
 ; end added code
-	POP	H                           
+	POP		H                           
 	RET									;Return to normal Boot-up processing
 ;
 ; This code needs to be called on a cold boot.
@@ -583,23 +546,23 @@ L_VT100_HOOK_INIT:
 ;	This code is executed at cold boot so presumably before any Rex code,
 ;	similar to TS-DOS.
 ;
-	LXI	D,RST38_R						;Load Start address of RST 38H vector table
+	LXI		D,RST38_R					;Load Start address of RST 38H vector table
 hookloop:
-	ldax b								;Get offset of 1st vector to update
-	INX	B								;Point to LSB of 1st RST 38H vector
-	MOV	L,A								;Move Vector offset to HL             
-	INR	A								;Increment A to test for FFH termination byte
-	JZ init_vid							;Jump if termination byte (FFH)
-	MVI	H,00H							;Zero MSB of HL for offset calculation
-	DAD	D								;Offset into RST 38H vector table
-	LDAX B								;Load LSB of next RST 38 vector
-	INX	B								;Increment to MSB of vector
-	MOV	M,A								;Save LSB of our routine to RST 38H vector table
-	INX	H								;Increment to MSB location in vector table
-	LDAX B								;Load MSB of our address
-	INX	B								;Point to next RST 38H offset in our local table
-	MOV	M,A								;Save MSB of next vector address to RST 38 Vector table
-	JMP	hookloop						;Jump to load next RST 38 vector table entry	
+	ldax	b							;Get offset of 1st vector to update
+	INX		B							;Point to LSB of 1st RST 38H vector
+	MOV		L,A							;Move Vector offset to HL             
+	INR		A							;Increment A to test for FFH termination byte
+	JZ	 	init_vid					;Jump if termination byte (FFH)
+	MVI		H,00H						;Zero MSB of HL for offset calculation
+	DAD		D							;Offset into RST 38H vector table
+	LDAX	B							;Load LSB of next RST 38 vector
+	INX		B							;Increment to MSB of vector
+	MOV		M,A							;Save LSB of our routine to RST 38H vector table
+	INX		H							;Increment to MSB location in vector table
+	LDAX	B							;Load MSB of our address
+	INX		B							;Point to next RST 38H offset in our local table
+	MOV		M,A							;Save MSB of next vector address to RST 38 Vector table
+	JMP		hookloop					;Jump to load next RST 38 vector table entry	
 
 	if 0
 ;
@@ -621,15 +584,9 @@ unhookloop:
 	MVI	H,00H							;Zero MSB of HL for offset calculation
 	LXI	D,RST38_R						;Load Start address of RST 38H vector table
 	DAD	D								;Offset into RST 38H vector table
-	if 1
 	xchg								;resulting table ptr to DE
 	lxi	h,R_RET_INSTR					;replacement address
 	shlx								;store address in table. Note 8085 only instruction.
-	else
-	MVI	M,R_RET_INSTR & 256				;Save LSB of our routine to RST 38H vector table
-	INX	H								;Increment to MSB location in vector table
-	MVI	M,R_RET_INSTR >> 8				;Save MSB of next vector address to RST 38 Vector table
-	endif
 	JMP	unhookloo2						;Jump to load next RST 38 vector table entry
 init_vid3:
 	endif
