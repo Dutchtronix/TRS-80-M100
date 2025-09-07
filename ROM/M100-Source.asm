@@ -32,7 +32,7 @@
 ;
 ;	HWSCROLL
 ;	Steven Adolph's ROM version that uses the LCD hardware to speed up scrolling
-;	BASEPATCH required for HWSCROLL
+;	BASEPATCH or LCDPATCH required for HWSCROLL
 ;	UNTESTED
 ;
 ; Both versions maintain the original published addresses (where possible)
@@ -52,7 +52,7 @@
 ;	M100-Source.asm
 ;	VT100inROM.asm
 ;	VT100inROM2.asm
-;	HWPatch.asm
+;	HWScroll.asm
 ;	
 ; Notes
 ;	VirtualT does not emulate telephone modem hardware completely.
@@ -93,7 +93,7 @@ REALM100	equ	1						;as opposed to Epson M100.
 ; HWSCROLL configuration
 BASEPATCH	equ	1
 LCDPATCH	equ	0
-HWSCROLL	equ	0
+HWSCROLL	equ	1
 HWMODEM		equ	1
 VT100INROM	equ	0
 AUXCON		equ	1						;Bar code reader hardware mod. No space available.
@@ -399,7 +399,7 @@ DOLOAD_R	equ	0F767H					;Load start address of .DO file being edited (2 bytes)
 ; potentially unused space 0F769H..0F786, 30 bytes
 UNUSED4_R	equ	0F787H					;1 bytes. Only ever cleared
 CURHPOS_R	equ	0F788H					;Horiz. position of cursor (0-39)
-FNKSTR_R	equ	0F789H					;Function key definition area. 128/80H bytes
+FNKSTR_R	equ	0F789H					;Function key definition area. 128 bytes
 FILTYP_R	equ	0F809H					;File type
 BASFNK_R	equ	0F80AH					;BASIC's function keys. 128 bytes
 SHFTPRNT_R	equ	0F88AH					;SHIFT-PRINT key sequence Function text
@@ -1296,7 +1296,7 @@ R_FUN_INIT_IMAGE:						;035AH
 	DW	 0000H							;Auto PowerDown signature (at address 0F5F2H)
 	DW	 SYSRAM_R 						;initial value of HIMEM (at address 0F5F4H)
 	if	VT100INROM
-	JMP	phook
+	JMP		phook
 	else
 	RET									;This RET can be changed to JMP to hook Boot-up (0F5F6H)
 	DW	0000H							;Space for address for JMP
@@ -5515,9 +5515,13 @@ R_MDM_DCB:								;17D1H
 ; Close MDM file
 ;
 R_MDM_CLOSE:							;17DBH
+	if		HWMODEM
     MVI     A,02H
     CALL    L_PAUSE						;pause
     CALL    R_DISCONNECT_PHONE       	;Disconnect phone line and disable modem carrier
+	else
+	DB		0,0,0,0,0,0,0,0				;8 bytes free if !HWMODEM
+	endif
     JMP     R_COM_CLOSE				    ;Close COM file
 ;
 ; Set RS232 parameters from string at M
@@ -6058,7 +6062,7 @@ R_COM_MDM_STMT:							;1A9EH
 R_GET_TIME:
     PUSH    H
     LXI     H,SYSINT_R+3				;On Time flag
-+	CALL    R_DET_TIME_ARG				;Determine argument (ON/OFF/STOP) for TIME$ statement
++	CALL    L_DET_INT_ARG				;Determine argument (ON/OFF/STOP) for TIME$ statement
 L_GET_TIME_1:
 	POP     H
     POP     PSW
@@ -6077,53 +6081,62 @@ R_KEY_FUN:								;1AB2H
     CALL    L_GETBYT					;Evaluate byte expression at M-1. Result in A & E
     DCR     A							;rebase to 0..7
     CPI     08H
-    JNC     R_GEN_FC_ERROR				;Generate FC error if A >= 8
-    MOV     A,M							;check for ','?
+    JNC     R_GEN_FC_ERROR				;brif A >= 8: Generate FC error
+    MOV     A,M							;get next token
     PUSH    H							;save src ptr
     CALL    L_KEY_STMT					;needs E
     JMP		L_GET_TIME_1
 ;
 ; KEY STOP/ON/OFF statements
 ;
+; set status for all function keys
+;
+; IN:
+;	A ON/OFF/STOP token
+;
 R_KEY_ON_OFF_STMT:						;1AC3H
     PUSH    H
-    MVI     E,08H
+    MVI     E,08H						;for all function keys
 -	PUSH    D
     PUSH    PSW
-    CALL    L_KEY_STMT					;needs E
+    CALL    L_KEY_STMT					;uses E
     POP     PSW
     POP     D
     DCR     E
     JNZ		-
     JMP     L_GET_TIME_1
 ;
-; Process KEY() statement key number
+; Process KEY() statement
 ;
 ; IN:
+;	A ON/OFF/STOP token
 ;	E key number base 1
 ; OUT:
 ;	HL?
 ;
 L_KEY_STMT:
     MVI     D,00H
-    LXI     H,FKEYSTAT_R-1				;0F62FH Load pointer to KEY ON enabled table
+    LXI     H,FKEYSTAT_R-1				;0F62FH Load pointer to KEY ON enabled table - 2
     DAD     D
-    PUSH    H							;save ptr
-    LXI     H,SYSINT_R+3				;0F947H &Basic Interrupt table[1]
+    PUSH    H							;save ptr to FKEYSTAT_R
+    LXI     H,SYSINT_R+3				;&Basic Interrupt table[1]
     DAD     D							;add 3 * DE
     DAD     D
     DAD     D
-    CALL    R_DET_TIME_ARG				;Determine argument (ON/OFF/STOP) for TIME$ statement
+    CALL    L_DET_INT_ARG				;Determine argument (ON/OFF/STOP) for TIME$ statement
     MOV     A,M
     ANI     01H							;isolate bit 0
-    POP     H							;restore ptr
+    POP     H							;restore ptr to FKEYSTAT_R
     MOV     M,A							;update KEY ON enabled table
     RET
 ;
-; Determine argument (ON/OFF/STOP) for TIME$ statement
-; Actually:  Determine argument (ON/OFF/STOP) for any Interrupt statement
+; Determine argument (ON/OFF/STOP) for any Interrupt statement
 ;
-R_DET_TIME_ARG:							;1AEAH
+; IN:
+;	A ON/OFF/STOP token
+;	HL	Interrupt Table entry to update
+;
+L_DET_INT_ARG:							;1AEAH
     CPI     _ON
     JZ      R_INT_ON_STMT				;TIME$ ON statement
     CPI     _OFF
@@ -6329,60 +6342,64 @@ L_SEND_CHARS_TO_LCD_1:
     JNZ     R_SEND_CHARS_TO_LCD			;Send characters from M to the screen
     MVI     A,' '						;Return ' '
     RET
-
+;
+; KEY ON/OFF/STOP
+; KEY (num) ON/OFF/STOP
+; KEY num,"string"
+;
 L_KEY_NOLIST:
     CPI     '('
     JZ      R_KEY_FUN				  	;KEY() statement
     CPI     _ON							;ON
     JZ      R_KEY_ON_OFF_STMT			;KEY STOP/ON/OFF statements
-    CPI     0CBH						;OFF
+    CPI     _OFF						;OFF
     JZ      R_KEY_ON_OFF_STMT			;KEY STOP/ON/OFF statements
-    CPI     8FH							;STOP
+    CPI     _STOP						;STOP
     JZ      R_KEY_ON_OFF_STMT			;KEY STOP/ON/OFF statements
     CALL    L_GETBYT					;Evaluate byte expression at M-1
-    DCR     A
+    DCR     A							;rebasse to 0..7
     CPI     08H
-    JNC     R_GEN_FC_ERROR				;Generate FC error
-    XCHG
+    JNC     R_GEN_FC_ERROR				;brif A >= 8: Generate FC error
+    XCHG								;src ptr to DE
     MOV     L,A							;zero extend A to HL
     MVI     H,00H
-    DAD     H							;*16
+    DAD     H							;16 bytes per entry
     DAD     H
     DAD     H
     DAD     H
     LXI     B,FNKSTR_R				  	;Function key definition area
-    DAD     B
-    PUSH    H
-    XCHG
+    DAD     B							;index
+    PUSH    H							;save function key ptr
+    XCHG								;restore src ptr
 	SYNCHK	','
     CALL    L_FRMEVL					;Main BASIC evaluation routine
-    PUSH    H
+    PUSH    H							;save src ptr
     CALL    L_FRESTR					;FREE UP TEMP & CHECK STRING
-    MOV     B,M
+    MOV     B,M							;string length to B
     INX     H
-	GETDEFROMMNOINC
-    POP     H
-    XTHL
-    MVI     C,0FH
-    MOV     A,B
+	GETDEFROMMNOINC						;string data ptr to DE
+    POP     H							;restore src ptr
+    XTHL								;src ptr to stack. function key table ptr to HL
+    MVI     C,0FH						;loop control
+    MOV     A,B							;string length
     ANA     A
-    JZ      L_KEY_NOLIST_1
--	LDAX    D
-    ANA     A
-    JZ      R_GEN_FC_ERROR				 ;Generate FC error
-    MOV     M,A
-    INX     D
-    INX     H
-    DCR     C
-    JZ      +
-    DCR     B
-    JNZ		-
-L_KEY_NOLIST_1:
-    MOV     M,B
-    INX     H
-    DCR     C
-    JNZ     L_KEY_NOLIST_1
-+	MOV     M,C
+    JZ      L_KEY_NOLIST_1				;brif no string
+-	LDAX    D							;get string char
+    ANA     A							;test for NULL
+    JZ      R_GEN_FC_ERROR				;Generate FC error
+    MOV     M,A							;update function key table
+    INX     D							;next string
+    INX     H							;next table ptr
+    DCR     C							;max entry size
+    JZ      +							;brif reached: done
+    DCR     B							;string length
+    JNZ		-							;brif not done
+L_KEY_NOLIST_1:							;B is now 0
+    MOV     M,B							;terminate function key table entry
+    INX     H							;next
+    DCR     C							;more space?
+    JNZ     L_KEY_NOLIST_1				;brif more space
++	MOV     M,C							;HL ptr beyond end of function key table entry
     CALL    R_DISP_FKEYS				;Display function keys on 8th line
     CALL    R_SET_BASIC_FKEYS       	;Copy BASIC Function key table to key definition area
     POP     H
@@ -6391,9 +6408,9 @@ L_KEY_NOLIST_1:
 ; PSET statement
 ;
 R_PSET_STMT:							;1C57H
-    CALL    R_TOKENIZE_XY				;Get (X),Y) coordinate from tokenized string at M in DE, A
+    CALL    R_TOKENIZE_XY				;Get (X),Y) coordinate from tokenized string at M in DE, A is plot value
 L_PSET_STMT_1:
-    RRC
+    RRC									;bit 0 to carry
     PUSH    H
     PUSH    PSW
     CC      R_PLOT_POINT				;Plot (set) point (D),E) on the LCD
@@ -6405,7 +6422,7 @@ L_PSET_STMT_1:
 ; PRESET statement
 ;
 R_PRESET_STMT:							;1C66H
-    CALL    R_TOKENIZE_XY				;Get (X),Y) coordinate from tokenized string at M in DE,A
+    CALL    R_TOKENIZE_XY				;Get (X),Y) coordinate from tokenized string at M in DE,A is plot value
     CMA
     JMP     L_PSET_STMT_1
 ;
@@ -6575,6 +6592,7 @@ L_DRAW_LINE_3:
 ; Get (X,Y) pixel coordinate from tokenized string at M
 ;
 ; OUT:
+;	A		plot value (default is 1)
 ;	DE		(x,y)
 ;
 R_TOKENIZE_XY:							;1D2EH
@@ -6588,21 +6606,21 @@ R_TOKENIZE_XY:							;1D2EH
     CPI     MAXPIXROW					;64
     JNC     R_GEN_FC_ERROR				;brif Y >= MAXPIXROW: Generate FC error
     POP     PSW							;restore X
-    MOV     D,A							;move X to D. DE is not (x,y)
+    MOV     D,A							;move X to D. DE is now (x,y)
     XCHG
     SHLD    XPLOT_R						;move DE to X coord of last point plotted
     XCHG
     MOV     A,M							;next char
     CPI     ')'
-    JNZ     +
+    JNZ     +							;brif not ')'
     CHRGET								;Get next non-white char from M
     MVI     A,01H						;default plot ON
     RET
 +	PUSH    D							;save DE
 	SYNCHK	','
-    CALL    L_GETBYT					;Evaluate byte expression at M-1: switch in A,E
+    CALL    L_GETBYT					;Evaluate byte expression at M-1: value in A,E
 	SYNCHK	')'
-    MOV     A,E							;plot switch
+    MOV     A,E							;plot value
     POP     D							;restore DE
     RET
 ;
@@ -14222,7 +14240,7 @@ L_ESC_M_1:
 ;	•	Scroll active flag is set
 ;	•	hardware scroll for top and bottom drivers at the same time
 ;	•	return to R_LCD_SCROLL (44D2H) routine
-	JMP		TRAP_M
+	call	TRAP_M
 	else
     JZ      R_ESC_l_FUN					;ESC l routine (erase current line)
 	endif
@@ -14271,7 +14289,7 @@ R_ESC_CapL_FUN:							;44EAH
 ;	•	return to 44EAH routine
 ;	.	A holds # of scrolls
 ;	.	L == the line number to process first
-	JMP		TRAP_L
+	call	TRAP_L
 	else
     JZ      R_ESC_l_FUN				    ;brif H == L: ESC l routine (erase current line)
 	endif
@@ -23774,6 +23792,12 @@ L_IOEXIT:
 
 	endif								;REALM100
 
+	if		HWSCROLL
+	include "HWScroll.asm"
+	
+	DS	(7641H-75D2H)					;FREE code space if LCDPATCH && HWSCROLL
+	endif
+
 ;
 	elseif BASEPATCH
 
@@ -23812,7 +23836,7 @@ L_UPD_DRV_SELECT_PTR:
 	RET
 	
 	if		HWSCROLL
-	include "HWPatch.asm"
+	include "HWScroll.asm"
 	
 ; 7603H to 7640H free to use if HWSCROLL
 	DS		62							;62 bytes FREE CODE SPACE if REALM100
