@@ -32,7 +32,7 @@ Microsoft Basic-80 version N82
 	HWSCROLL
 	Steven Adolph's ROM version that uses the LCD hardware to speed up scrolling
 	BASEPATCH or LCDPATCH required for HWSCROLL
-	UNTESTED
+	Works with VirtualT
 
  Both versions maintain the original published addresses (where possible)
 
