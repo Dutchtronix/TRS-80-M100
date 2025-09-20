@@ -1,8 +1,8 @@
 This is a VT52 terminal emulator for Windows, written in C#.
 
-Originally written by Kenneth Gober
-Updated to be used with M100 Serial mode by Steven Adolph (see M100 adaptation.txt)
-Updated for more flexible XY cursor location controls by JdR
+Originally written by Kenneth Gober<br>
+Updated to be used with M100 Serial mode by Steven Adolph (see M100 adaptation.txt)<br>
+Updated for more flexible XY cursor location controls by JdR<br>
 
 The aim of this project is to accurately reproduce the experience of using a real
 Digital Equipment Corporation (DEC) VT52 terminal, including the look of the screen.
