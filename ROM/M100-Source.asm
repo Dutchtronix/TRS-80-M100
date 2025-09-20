@@ -3361,16 +3361,16 @@ L_LPOPER:
     CALL    L_EVAL					    ;Evaluate function at M
 ; From mbasic 5.2
 ;RESET OVERFLOW PRINTING BACK TO NORMAL
-;	XRA	A			;(SET TO 1 AT FUNDSP TO SUPPRESS
-;	STA	FLGOVC			;MULTIPLE OVERFLOW MESSAGES)
+;	XRA	A								;(SET TO 1 AT FUNDSP TO SUPPRESS
+;	STA	FLGOVC							;MULTIPLE OVERFLOW MESSAGES)
 L_TSTOP:
-    SHLD    TEMP2_R					;store text ptr
+    SHLD    TEMP2_R						;store text ptr
 L_RETAOP:
-    LHLD    TEMP2_R					;restore text ptr
+    LHLD    TEMP2_R						;restore text ptr
     POP     B							;restore priority
 L_NOTSTV:
-    MOV     A,M
-    SHLD    TEMP3_R
+    MOV     A,M							;next char/token
+    SHLD    TEMP3_R						;save src ptr
     CPI     _PLUS_						;token '+'
     RC									;done if A < _PLUS_
     CPI     _SGN
@@ -3384,7 +3384,7 @@ L_NOTSTV:
     JNZ     +							;brif token was != _PLUS_
     LDA     VALTYP_R					;Type of last expression used
     CPI     03H							;String type?
-    MOV     A,E							;restore rescaled token
+    MOV     A,E							;restore rescaled token==0
     JZ      L_STR_CONCAT				;string concatenation
 ;
 ;	Operands are processed as given below:
@@ -8690,7 +8690,7 @@ L_SVAR:
 
 L_ARYVAR:
     LHLD    TEMP9_R						;ptr
-	GETDEFROMMNOINC
+	GETDEFROMMNOINC						;*ptr
     MOV     A,D							;test DE
     ORA     E
     LHLD    ARYTAB_R					;ptr to Start of array table
@@ -8716,7 +8716,7 @@ L_ARYVA2:
 ;
 L_ARYVA4:
     XCHG								;SAVE ARYVAR IN DE
-    LHLD    STRGEND_R					;GET END OF ARRAYS
+    LHLD    STRGEND_R					;GET END OF ARRAYS (Unused memory pointer)
     XCHG
     COMPAR								;Compare Unused memory pointer and HL: HL - DE
     JZ      L_GRBPAS					;brif equal
@@ -8815,13 +8815,13 @@ L_STR_CONCAT:
     PUSH    H
     LHLD    IFACLO_R					;FAC1 for integers
     XTHL
-    CALL    L_EVAL				  	  ;Evaluate function at M
+    CALL    L_EVAL						;Evaluate function at M
     XTHL
     CALL    L_CHKSTR
     MOV     A,M
-    PUSH    H
+    PUSH    H							;ptr to str1
     LHLD    IFACLO_R					;FAC1 for integers
-    PUSH    H
+    PUSH    H							;ptr to str2
     ADD     M							;new string length
     LXI     D,000FH
     JC      R_GEN_ERR_IN_E				;Generate error 15. if overflow
@@ -8830,22 +8830,24 @@ L_STR_CONCAT:
     CALL    L_FRETMP					;Get pointer to stack string (Len + address). POP based on DE
     XTHL
     CALL    L_FRETM2
-    PUSH    H
-    LHLD    TRSNSTR_R+1
+    PUSH    H							;ptr to string
+    LHLD    TRSNSTR_R+1					;TRSNSTR_R+1 to DE
     XCHG
-    CALL    R_MEMCPY_CALL_ARGS       	;Memory copy using args following the CALL statement
-    CALL    R_MEMCPY_CALL_ARGS       	;Memory copy using args following the CALL statement
+    CALL    L_StrCpy			       	;Memory copy using args pointed to by ptr on stack
+    CALL    L_StrCpy			       	;Memory copy using args pointed to by ptr on stack
     LXI     H,L_TSTOP					;continuation function
     XTHL								;eval entry point to stack. value on stack (textptr?) to HL
     PUSH    H							;text ptr
     JMP     L_STRSTK_ADD				;add Transient String to String Stack
 ;
-; Memory copy using args following the CALL statement
+; Memory copy using args pointed to by ptr on stack
 ;
 ; IN:
-;	DE		memory ptr
+;	DE		target memory ptr;
 ;
-R_MEMCPY_CALL_ARGS:						;2904H
+;	on stack: ptr to source string
+;
+L_StrCpy:								;2904H
     POP     H							;return address
     XTHL								;previously pushed ptr to HL, return address to stack
     MOV     A,M							;length
@@ -8864,7 +8866,7 @@ R_MEMCPY_CALL_ARGS:						;2904H
 ;	DE		destination
 ;
 R_MOVE_L_BYTES:
-    INR     L							;test length
+    INR     L							;pre-inc length
 -	DCR     L							;decrement length
     RZ									;retif length now 0
     LDAX    B							;char from string
@@ -8872,8 +8874,6 @@ R_MOVE_L_BYTES:
     INX     B
     INX     D
     JMP     -
-
-; 
 ;
 ; FRETMP IS PASSED A POINTER TO A STRING DESCRIPTOR IN DE
 ; THIS VALUE IS RETURNED IN HL. ALL THE OTHER REGISTERS ARE MODIFIED.
@@ -8912,7 +8912,7 @@ L_FRETMP:
     LHLD    FRETOP_R					;Pointer to current location in BASIC string buffer
     COMPAR								;[FRETOP_R] - DE
     JNZ     +							;brif not identical
-;A 0 if COMPAR returns Z
+;A== 0 if COMPAR returns Z
     MOV     B,A							;zero extend C to BC
     DAD     B
     SHLD    FRETOP_R					;update current location in BASIC string buffer
@@ -9328,7 +9328,7 @@ LHSMID:
     POP     H							;retrieve text ptr
     PUSH    H
     CALL    R_MOVE_TYP_BYTES_INC		;from (DE) to M
-+	POP     H
++	POP     H							
     XTHL
 	SYNCHK	','
     CALL    L_GETBYT					;Evaluate byte expression at M-1
@@ -21469,10 +21469,10 @@ R_ROM_CAT_ENTRIES:						;6BF1H
 ;	•	1 byte for page number storage
 ;	•	1 byte for scroll active flag
 ;	•	These 2 bytes are copied to RAM.
-	DB		00H,"Haya"
-	DB		00H,00H,69H
+	DB		00H,"Hayas"
+	DB		00H,00H
 	else
-    DB      00H,"Hayash",'i'			;69H
+    DB      00H,"Hayash",'i'
 	endif
     DB      _DIR_DOFILE|_DIR_INVIS		;type 48H
     DW      0000H						;no associated function
