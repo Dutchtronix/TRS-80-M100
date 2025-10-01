@@ -322,7 +322,7 @@ AUTPWR_R	equ	0F5F2H					;auto power down flag
 HIMEM_R		equ	0F5F4H					;Highest memory available to BASIC (clear value)
 BOOTHK_R	equ	0F5F6H					;hook Boot-up
 WANDHK_R	equ	0F5F9H					;wand hook
-SERHK_R		equ	0F5FCH					;This is the RST 6.5 routine (RS232 receive interrupt) hook
+SERHK_R		equ	0F5FCH					;This is the RST 6.5 routine (Serial receive interrupt) hook
 SYSHK_R		equ	0F5FFH					;This is the RST 7.5 routine (SYSINT) hook
 PWRDOWN_R	equ	0F602H					;power down trap
 ROMJMP_R	equ	0F624H					;Launch Option ROM
@@ -361,7 +361,7 @@ PWROFF_R	equ	0F656H					;Power off exit condition switch
 TIMDWN_R	equ	0F657H					;POWER down time (1/10ths of a minute)
 DUPLEX_R	equ	0F658H					;Full/Half duplex switch
 ECHO_R		equ	0F659H					;Echo switch
-LFFLG_R		equ	0F65AH					;Auto linefeed on RS232 output switch (non zero send line feeds with each carriage return)
+LFFLG_R		equ	0F65AH					;Auto linefeed on Serial output switch (non zero send line feeds with each carriage return)
 SERMOD_R	equ	0F65BH					;Serial initialization string like "98N1D"
 										;LSTCAL_R-1 (0F660H) contains JMP instruction
 LSTCAL_R	equ	0F661H					;Address last called (2 bytes)
@@ -374,7 +374,7 @@ ERRFLG_R	equ	0F672H					;Last Error code (1 byte)
 LPTPOS_R	equ	0F674H					;Line printer head position (based from zero)
 PRTFLG_R	equ	0F675H					;Flag 0FFH=send output to lpt
 COLWRAP_R	equ	0F676H					;comma value for print. contains 14 or 56 if 80 columns width
-STRBUF_R	equ	0F678H					;BASIC string buffer pointer/Top of available RAM
+STRP_R		equ	0F678H					;BASIC string pool pointer/Top of available RAM
 CURLIN_R	equ	0F67AH					;Current Basic executing line number
 TXTTAB_R	equ	0F67CH					;Start of BASIC program pointer
 VALSTRPTR_R equ	0F67EH					;ptr used by VAL_STR_FUN() (2 bytes)
@@ -382,9 +382,10 @@ VALSTRPTR_R equ	0F67EH					;ptr used by VAL_STR_FUN() (2 bytes)
 ; end of R_FUN_INIT_IMAGE
 ; ======================================
 EOSMRK_R	equ	0F680H					;End of Statement marker
+;TOKTMP_R and KBUF_R need to be consecutive
 TOKTMP_R	equ	0F681H					;temp storage for tokenized line:
 										;	next line (2 bytes) + line number (2 bytes)
-INPBUF_R	equ	0F685H					;Start of keyboard crunch buffer for line input routine (90 bytes)
+KBUF_R		equ	0F685H					;Start of keyboard crunch buffer for line input routine (90 bytes)
 ESCESC_R	equ	0F6DFH					;Clear storage for key read from keyboard to test for ESC ESC (1 byte)
 SAVESCESC_R	equ	0F6E0H					;saved ESCESC_R
 PNDERR_R	equ	0F6E1H					;Pending error
@@ -496,20 +497,20 @@ VALTYP_R	equ	0FB65H					;Type of last expression used: (2-Integer, 3-String, 4-S
 ; STRINGS WON'T BE CRUNCHED.
 DORES_R		equ	0FB66H					;WHETHER CAN OR CAN'T CRUNCH RES'D WORDS
 MEMSIZ_R	equ	0FB67H					;Start address for file buffer area (2 bytes)
-TEMPPT_R	equ	0FB69H					;String Stack ptr (2 bytes)
+FRETOP_R	equ	0FB69H					;String Stack ptr (2 bytes)
 TEMPST_R	equ	0FB6BH					;String Stack 30 bytes (10 string descriptors)
 STRSTKEND_R	equ	0FB88H					;end of String Stack
 TRSNSTR_R	equ	0FB89H					;transient string storage (3 bytes)
-FRETOP_R	equ	0FB8CH					;Pointer to free location in BASIC string buffer (2 bytes). Goes down.
+STRPFRE_R	equ	0FB8CH					;Pointer to free location in BASIC string pool (2 bytes). Goes down.
 TEMP3_R		equ	0FB8EH					;1/2 byte
 TEMP8_R		equ	0FB90H					;2 bytes
 MSTMP3_R	equ	0FB92H					;2 bytes
 DATALIN_R	equ	0FB94H					;Line number of current data statement
 SUBFLG_R	equ	0FB96H					;DONT RECOGNIZE SUBSCRIPTED VARIABLES flag
-PROFLG_R	equ	0FB97H					;1 byte. TODO Only ever cleared
+PROFLG_R	equ	0FB97H					;1 byte.
 PRT_USING_R	equ	0FB98H					;Print Using Flag (1 byte
 LSTVAR_R	equ	0FB99H					;Address of last variable assigned (2 bytes)
-SAVTXT_R	equ	0FB9BH					;Most recent or currenly running line pointer
+BRKLIN_R	equ	0FB9BH					;Most recent or currenly running line pointer
 BASSTK_R	equ	0FB9DH					;SP used by BASIC to reinitialize the stack
 ERRLIN_R	equ	0FB9FH					;Line number of last error
 DOT_R		equ	0FBA1H					;Most recent entered/ listed/ or edited line
@@ -519,11 +520,13 @@ PRGRUN_R	equ	0FBA7H					;Basic program running flag
 TEMP2_R		equ	0FBA8H					;temp pointer
 OLDLIN_R	equ	0FBAAH					;Line where last break, END, or STOP occured (2 bytes)
 ;
-; OLDTXT_R
+; CONTAD_R
 ; A STORED TEXT POINTER OF ZERO IS SETUP BY STKINI AND INDICATES THERE IS NOTHING TO CONTINUE
 ;
-OLDTXT_R	equ	0FBACH					;Address where program stoped on last break, END, or STOP (2)
+CONTAD_R	equ	0FBACH					;Address where program stoped on last break, END, or STOP (2)
+ASCTAB_R	equ	0FBAEH					;Pointer to the start of the DO files and end of the BA files (2 bytes)
 DOSTRT_R	equ	0FBAEH					;Pointer to the start of the DO files and end of the BA files (2 bytes)
+BINTAB_R	equ	0FBB0H					;Pointer to the start of CO files (2 bytes)
 COSTRT_R	equ	0FBB0H					;Pointer to the start of CO files (2 bytes)
 ;
 ;POINTER TO START OF SIMPLE VARIABLE SPACE
@@ -534,14 +537,15 @@ VARTAB_R	equ	0FBB2H					;Pointer to the start of variable table (2 bytes)
 ;
 ;POINTER TO BEGINNING OF ARRAY TABLE
 ;INCREMENTED BY 6 WHENEVER A NEW SIMPLE VARIABLE IS FOUND, AND
-;SET TO [VARTAB] BY CLEARC.
+;SET TO [VARTAB_R] BY CLEARC.
 ;
 ARYTAB_R	equ	0FBB4H					;Pointer to the start of array table (2 bytes)
 ;
 ;END OF STORAGE IN USE
 ;INCREASED WHENEVER A NEW ARRAY OR SIMPLE VARIABLE IS ENCOUNTERED
-;SET TO [VARTAB] BY CLEARC.
+;SET TO [VARTAB_R] BY CLEARC.
 ;
+STREND_R	equ	0FBB6H					;Pointer to the start of the systems unused memory (2 bytes)
 STRGEND_R	equ	0FBB6H					;Pointer to the start of the systems unused memory (2 bytes)
 ;
 ;POINTER TO DATA. INITIALIZED TO POINT AT THE ZERO IN FRONT OF [TXTTAB]
@@ -610,7 +614,7 @@ BOOTSTK_R	equ	0FCA8H					;0FCA8H..0FCBFH	18H/24 byte stack area during boot
 ; ALTLCD_R and LCD_R need to be consecutive
 ; ALTLCD_R area only used in terminal mode
 ;
-ALTLCD_R	equ	0FCC0H					;Screen buffer 0 (Previous page for Telcom)
+ALTLCD_R	equ	0FCC0H					;Screen buffer 0 (Previous page for Telcom 320 bytes)
 MNU2RAM_R	equ	0FDA1H					;Map of MENU entry positions to RAM directory
 TMP_UTIL_R	equ	0FDD7H					;temp to store a ptr (2 bytes)
 STRNAM_R	equ	0FDD9H					;filename string. 8 bytes
@@ -618,20 +622,22 @@ MENUCMD_R	equ	0FDEDH					;Menu command entry count
 MENPOS_R	equ	0FDEEH					;Current MENU directory location. Sometimes Used as Lfnd flag 
 MENMAX_R	equ	0FDEFH					;Maximum MENU directory location
 TMPCONDEV_R	equ	0FDFAH					;temporary Console Device Flag
-LCD_R		equ	0FE00H					;Screen buffer 1 (LCD memory)
-XONXOFF_R	equ	0FF40H					;XON/XOFF protocol control
+LCD_R		equ	0FE00H					;Screen buffer 1 (LCD char memory 320 bytes)
+XONXOFF_R	equ	0FF40H					;XON/XOFF protocol control from terminal or server to M100
 ;
 ; Zero 0FF40H..0FFFCH, basically all RAM >= XONXOFF_R at cold boot time.
 ;
-XONXOFF1_R	equ	0FF41H					;Second XON/XOFF protocol control
-XONFLG_R	equ	0FF42H					;XON/XOFF enable flag
-SERINIT_R	equ	0FF43H					;RS232 initialization status
+M100XONXOFF_R equ 0FF41H				;M100 XON/XOFF protocol control. 0 or 0FFH
+XONXOFFENA_R equ 0FF42H					;XON/XOFF enable flag
+SERINIT_R	equ	0FF43H					;Serial initialization status
 SNDFLG_R	equ	0FF44H					;Sound flag: 0 means sound allowed
 PORTE8_R	equ	0FF45H					;Contents of port E8H
-SERBUF_R	equ	0FF46H					;RS232 Character buffer
-SERCNT_R	equ	0FF86H					;RS232 buffer count
-SERPTR_R	equ	0FF88H					;RS232 buffer input pointer
-CTRLS_R		equ	0FF8AH					;Control-S status
+SERBUF_R	equ	0FF46H					;Serial Character buffer (64 bytes)
+SERCNT_R	equ	0FF86H					;Serial Ring Buffer count
+SERTAIL_R	equ	0FF87H					;Serial Ring Buffer TAIL index
+SERHEAD_R	equ	0FF88H					;Serial Ring Buffer HEAD index
+SERERR_R	equ	0FF89H					;Serial Ring Buffer error
+CTRLS_R		equ	0FF8AH					;Control-S status: did M100 send an XOFF byte to terminal or server
 BAUDRT_R	equ	0FF8BH					;UART baud rate timer value (2 bytes)
 PARMSK_R	equ	0FF8DH					;Serial Ignore Parity Mask byte. Used to remove bits if 'I' parity
 CASPLS_R	equ	0FF8EH					;Cassette port pulse control
@@ -656,7 +662,7 @@ KEYPTR_R	equ	0FFA8H					;Pointer to entry in 2nd Storage Buffer for key (2 bytes
 KBCNT_R		equ	0FFAAH					;Keyboard buffer count. Buffer must follow
 KBBUF_R		equ	0FFABH					;keyboard typeahead buffer (64 bytes 40H)
 PNDCTRL_R	equ	0FFEBH					;Holds CTRL-C or CTRL-S until it is processed
-LCDBUF_R		equ	0FFECH					;6 byte LCD buffer
+LCDBUF_R	equ	0FFECH					;6 byte LCD buffer
 CSRSTAT_R	equ	0FFF2H					;cursor blink on-off status. Value 0, 1 or 080H (disabled)
 CSRCNT_R	equ	0FFF3H					;Time until next cursor blink
 ; LCTEY_R and LCTEX_R are 0 based. Keep these 2 together.
@@ -763,11 +769,11 @@ R_GET_FAC1_SIGN:						;0030H
     JMP     R_RST_30H_FUN				;Get sign of SGL or DBL precision
     NOP									;Filler
 ;
-; RST 6.5 -- RS232 character pending
+; RST 6.5 -- Serial character pending
 ;
 R_RST_6_5:								;0034H
     DI 
-    JMP     R_RST6_5_ISR				;RST 6.5 routine (RS232 receive interrupt)
+    JMP     L_SERIAL_IN_ISR				;RST 6.5 routine (Serial receive interrupt)
 ;
 ; RAM vector table driver
 ;
@@ -1304,7 +1310,7 @@ R_FUN_INIT_IMAGE:						;035AH
 	EI									;This is the hook for WAND (F5F9H) (RST 5.5)
 	RET									;Replace EI, RET, NOP with a JMP instruction
 	NOP
-	RET									;This is the RST 6.5 routine (RS232 receive interrupt) hook (0F5FCH/SERHK_R)
+	RET									;This is the RST 6.5 routine (Serial receive interrupt) hook (0F5FCH/SERHK_R)
 	DW	0000H							;Replace RET, NOP, NOP with a JMP instruction
 	RET									;This is the RST 7.5 hook (Background tick) (F5FFH)
 	DW	0000H
@@ -1590,7 +1596,7 @@ L_PRNT_ERR_IN_E:
     MOV     A,E
     MOV     C,E
     STA     ERRFLG_R					;Last Error code
-    LHLD    SAVTXT_R					;Most recent or currenly running line pointer
+    LHLD    BRKLIN_R					;Most recent or currenly running line pointer
     SHLD    ERRTXT_R					;Pointer to occurance of error
     XCHG
     LHLD    ERRLIN_R					;Line number of last error
@@ -1600,7 +1606,7 @@ L_PRNT_ERR_IN_E:
     JZ      +
     SHLD    OLDLIN_R					;Line where break), END), or STOP occurred
     XCHG
-    SHLD    OLDTXT_R					;Address where program stopped on last break), END), or STOP
+    SHLD    CONTAD_R					;Address where program stopped on last break), END), or STOP
     LHLD    ONERR_R						;Address of ON ERROR routine
     MOV     A,H
     ORA     L
@@ -1676,7 +1682,7 @@ R_GO_BASIC_RDY:							;0511H
     LXI     H,0FFFFH
     SHLD    CURLIN_R					;Currently executing line number
     LXI     H,COLONTXT_R				;contains ':'
-    SHLD    SAVTXT_R					;Most recent or Currently running line pointer
+    SHLD    BRKLIN_R					;Most recent or Currently running line pointer
     CALL    R_INP_DISP_LINE_NO_Q     	;Input and display (no "?") line and store
     JC      R_GO_BASIC_RDY				;IGNORE ^C
 ;
@@ -1687,31 +1693,31 @@ L_PROCESS_BASIC:						;0523H
     INR     A							;test A while preserving carry
     DCR     A
     JZ      R_GO_BASIC_RDY				;brif empty line: vector to BASIC ready
-    PUSH    PSW							;save carry
+    PUSH    PSW							;save carry: was char returned by CHRGET numeric?
     CALL    L_LINGET					;Convert line number at M to binary in DE
-    JNC     L_PROC_BAS_1				;brif OK
+    JNC     L_PROC_BAS_1				;brif no overflow
 ; number overflow
     CALL    L_TST_FCBLAST
     JZ      R_GEN_SN_ERROR				;brif FCBLAST == 0: Generate Syntax error
 L_PROC_BAS_1:							;line number in DE
-    DCX     H							;backup
+    DCX     H							;backup to previous char/token
     MOV     A,M
     CPI     ' '
-    JZ      L_PROC_BAS_1				;brif A == ' '
+    JZ      L_PROC_BAS_1				;brif A == ' ': skip
     CPI     09H							;TAB
-    JZ      L_PROC_BAS_1				;brif A == TAB
+    JZ      L_PROC_BAS_1				;brif A == TAB: skip
     INX     H							;next char
     MOV     A,M
     CPI     ' '
     CZ      L_INCHL						;Increment HL: skip ' '
     PUSH    D							;save line number
-    CALL    R_CRUNCH					;Perform Token compression. Returns carry.
+    CALL    R_CRUNCH					;Perform Token compression. Returns carry, length in BC
     POP     D							;restore line number
     POP     PSW							;restore carry
-    SHLD    SAVTXT_R					;Most recent or currently running line pointer
+    SHLD    BRKLIN_R					;Most recent or currently running line pointer
     JNC     L_LINE_NONUM				;brif line didn't start with a number
     PUSH    D							;save line number
-    PUSH    B							;save BC
+    PUSH    B							;save token line length
 ; DONT ALLOW ANY FUNNY BUSINESS WITH EXISTING PGM
     XRA     A
     STA     PROFLG_R					;clear
@@ -1723,6 +1729,8 @@ L_PROC_BAS_1:							;line number in DE
     XCHG								;line number back to DE
     CALL    L_FNDLIN					;Find line number in DE. Preserve carry for a while
 										;returns ptr to link field in BC if carry
+										;returns ptr to next line in HL if carry
+										;Z flag means undefined line IFF no carry
     JC      +							;found existing line
 ; line number doesn't exist
     POP     PSW							;retrieve char & flags
@@ -1731,14 +1739,21 @@ L_PROC_BAS_1:							;line number in DE
     ORA     A							;test char
 ; BC ptr to link field in line
 +	PUSH    B							;save link field ptr
-    JNC     +							;brif forward if no carry, not Z
-    CALL    L_COPY_TO_VARTAB			;Copy from (DE) to (BE) until DE == [VARTAB_R]
-    MOV     A,C							;compute BC - DE
+    JNC     +							;brif forward if no carry, meaning line number doesn't exist
+;
+; existing line is being replaced. Delete the existing line
+;
+    CALL    L_DELETE_BA_LINE			;Copy from ptr1 (HL) to ptr2 (BC) until ptr1 == End of Basic program
+										;returns old End of Basic program in DE
+    MOV     A,C							;compute BC - DE = negative number of deleted bytes
     SUB     E
     MOV     C,A
     MOV     A,B
     SBB     D
     MOV     B,A
+;
+; update start of DO and CO files area with number of deleted bytes
+;	
     LHLD    DOSTRT_R					;DO files pointer
     DAD     B
     SHLD    DOSTRT_R					;DO files pointer
@@ -1748,35 +1763,41 @@ L_PROC_BAS_1:							;line number in DE
     LHLD    XXSTRT_R
     DAD     B
     SHLD    XXSTRT_R
-+	POP     D
-    POP     PSW
-    PUSH    D
-    JZ      +
-    POP     D
++	POP     D							;restore link field ptr to DE
+    POP     PSW							;restore Z flag: line number found
+    PUSH    D							;push link field ptr
+    JZ      +							;brif line number not found
+    POP     D							;restore link field ptr
     LXI     H,0
     SHLD    ONERR_R						;Address of ON ERROR routine
-    LHLD    VARTAB_R					;Start of variable data pointer
-    XTHL
-    POP     B
-    PUSH    H
-    DAD     B
-    PUSH    H
-    CALL    L_CPY_BC_TO_HL_CHK			;Copy data from BC to HL down until BC == DE w/ check
-    POP     H
-    SHLD    VARTAB_R					;Start of variable data pointer
-    XCHG
-    MOV     M,H
-    POP     B
-    POP     D
-    PUSH    H
+    LHLD    VARTAB_R					;Start of variable data pointer == EndOfBasic ptr
+    XTHL								;push EndOfBasic program on stack, token line length to HL
+    POP     B							;EndOfBasic ptr
+    PUSH    H							;push token line length again
+    DAD     B							;compute new EndOfBasic ptr
+    PUSH    H							;save new EndOfBasic ptr
+;
+; make room for new line
+;
+    CALL    L_CPY_BC_TO_HL_CHK			;Copy data from EndOfBasic ptr to new EndOfBasic ptr going down until BC == DE w/ check
+    POP     H							;restore new EndOfBasic ptr
+    SHLD    VARTAB_R					;update of variable data pointer == EndOfBasic program
+    XCHG								;link field ptr to HL
+    MOV     M,H							;make link field ptr != 0
+    POP     B							;restore length
+    POP     D							;restore new line number
+    PUSH    H							;save ptr to start of line
     INX     H
     INX     H
-    MOV     M,E
+    MOV     M,E							;set line number
     INX     H
     MOV     M,D
     INX     H
-    LXI     D,TOKTMP_R					;temp storage for tokenized line
-    PUSH    H
+    LXI     D,TOKTMP_R					;ptr to tokenized line
+    PUSH    H							;save ptr to freed space
+;
+; update start of DO and CO files area with length of new line
+;	
     LHLD    DOSTRT_R					;DO files pointer
     DAD     B
     SHLD    DOSTRT_R					;DO files pointer
@@ -1786,9 +1807,9 @@ L_PROC_BAS_1:							;line number in DE
     LHLD    XXSTRT_R
     DAD     B
     SHLD    XXSTRT_R
-    POP     H
+    POP     H							;restore ptr to freed space
 ;
-; insert the new line
+; copy the new tokenized line
 ;
 -	LDAX    D
     MOV     M,A
@@ -1796,13 +1817,13 @@ L_PROC_BAS_1:							;line number in DE
     INX     D
     ORA     A
     JNZ     -
-+	POP     D
++	POP     D							;restore ptr to start of line
     CALL    R_CHEAD						;Fixup all links. Find end of BASIC program.
-    LHLD    FCBLAST_R					;FCB ptr for the last file used (2 bytes)
+    LHLD    FCBLAST_R					;save FCB ptr for the last file used (2 bytes)
     SHLD    TEMP2_R
     CALL    R_INIT_BASIC_VARS			;Initialize BASIC Variables for new execution
     LHLD    TEMP2_R
-    SHLD    FCBLAST_R					;FCB ptr for the last file used (2 bytes)
+    SHLD    FCBLAST_R					;restore FCB ptr for the last file used (2 bytes)
     JMP     R_GO_BASIC_RDY				;Silent vector to BASIC ready
 ;
 ; Update line addresses for current BASIC program
@@ -1910,7 +1931,7 @@ L_FNDLIN_2:				   				;062BH
     INX     H							;next
     ORA     M
     DCX     H							;backup
-    RZ									;retif double 0 found
+    RZ									;retif double 0 found: line # not found, carry clear
     INX     H							;skip ptr to next line
     INX     H
     MOV     A,M							;get next line # to HL
@@ -1924,9 +1945,9 @@ L_FNDLIN_2:				   				;062BH
     INX     H							;no flags affected
     MOV     H,M
     MOV     L,A
-    CMC									;complement carry
+    CMC									;complement carry: was clear, now set
     RZ									;retif line numbers match (COMPAR result)
-    CMC									;complement carry
+    CMC									;complement carry. Restore carry
     RNC									;retif next line # >= target line #
     JMP     L_FNDLIN_2     				;continue
 ;
@@ -1939,8 +1960,7 @@ R_CRUNCH:								;0646H
     XRA     A
     STA     DORES_R						;ALLOW CRUNCHING
     MOV     C,A
-    LXI     D,TOKTMP_R					;temp storage for tokenized line: output ptr.
-										;4 bytes before INPBUF_R
+    LXI     D,TOKTMP_R					;temp storage for tokenized line: output ptr. 4 bytes before KBUF_R
 L_CRUNCH_0:
     MOV     A,M							;get char
     CPI     ' '							;skip space
@@ -2296,14 +2316,14 @@ L_PUSH_FOR:
 ; IT CAN MERELY DO A RETURN WHEN IT IS DONE.
 ;
 L_NEWSTT:								;0804H
-    CALL    R_CHECK_RS232_QUEUE      	;Check RS232 queue for pending characters
+    CALL    L_CHECK_SERIAL_BUF      	;Check Serial Ring Buffer for pending characters
     CNZ     L_PROCESS_ON_INT			;calif TRUE: process ON COM interrupt
     LDA     PNDINT_R					;test PNDINT_R
     ORA     A
     CNZ     L_PROCESS_ON_INT_1			;calif != 0: Process ON KEY/TIME$/COM/MDM interrupts
 L_NEWSTT_1:
     CALL    L_CHK_KEY_CTRL				;Test for CTRL-C or CTRL-S
-    SHLD    SAVTXT_R					;Most recent or currenly running line pointer
+    SHLD    BRKLIN_R					;Most recent or currenly running line pointer
     XCHG
     LXI     H,0
     DAD     SP							;get SP into HL
@@ -2592,7 +2612,7 @@ L_RUNC2:
 R_GOTO_STMT:							;0936H
     CALL    L_LINGET					;Convert line number at M to binary in DE. 
 L_GOTO_STMT_1:
-    CALL    R_REM_STMT				    ;REM statement
+    CALL    R_REM_STMT				    ;Get end of line
     INX     H							;next char
     PUSH    H							;save txt ptr
     LHLD    CURLIN_R					;Currently executing line number
@@ -2627,7 +2647,7 @@ L_GOSUB_ON_INTR:
     INX     SP							;Remove flags from Stack. Keep only GOSUB token
     XCHG								;HL now has pointer to GOSUB line
     DCX     H							;Decrement to save as currently running line pointer
-    SHLD    SAVTXT_R					;Most recent or currenly running line pointer
+    SHLD    BRKLIN_R					;Most recent or currenly running line pointer
     INX     H							;Increment back to beginning of line
     JMP     L_NEWSTT_2					;Jump into Execute BASIC program loop
 ;
@@ -2752,9 +2772,9 @@ L_LET_2:
     PUSH    H							;save string descriptor
     INX     H							;skip length
 	GETDEFROMMNOINC						;string data ptr to DE
-    LXI     H,INPBUF_R-1
-    COMPAR								;INPBUF_R-1 - DE
-    JC      L_LET_3						;brif INPBUF_R-1 < DE
+    LXI     H,KBUF_R-1
+    COMPAR								;KBUF_R-1 - DE
+    JC      L_LET_3						;brif KBUF_R-1 < DE
     LHLD    STRGEND_R					;Unused memory pointer
     COMPAR								;STRGEND_R - DE
     POP     D							;pop string descriptor
@@ -2762,9 +2782,9 @@ L_LET_2:
     LXI     H,STRSTKEND_R
     COMPAR								;Compare string descriptor and STRSTKEND_R: HL - DE
     JC      +							;brif STRSTKEND_R < DE
-    LXI     H,TEMPPT_R+1				;0FB6AH String Stack address+1
-    COMPAR								;TEMPPT_R+1 - DE
-    JC      L_LET_4						;brif TEMPPT_R+1 < DE: String Stack underflow??
+    LXI     H,FRETOP_R+1				;0FB6AH String Stack address+1
+    COMPAR								;FRETOP_R+1 - DE
+    JC      L_LET_4						;brif FRETOP_R+1 < DE: String Stack underflow??
 +	SKIP_BYTE_INST						;Sets A to 0AFH
 L_LET_3:
     POP     D
@@ -3163,7 +3183,7 @@ L_CHK_REDO:
     POP     B
     LXI     H,L_REDO_MSG				;Code Based. 
     CALL    R_PRINT_STRING				;Print buffer at M until NULL or '"'
-    LHLD    SAVTXT_R					;Most recent or currenly running line pointer
+    LHLD    BRKLIN_R					;Most recent or currenly running line pointer
     RET
 ;
 ; INPUT # statement: read for file
@@ -3171,7 +3191,7 @@ L_CHK_REDO:
 R_INPUT_FROM_FILE:						;0C99H
     CALL    L_VALIDATE_FILE
     PUSH    H							;save FCB ptr
-    LXI     H,INPBUF_R-1
+    LXI     H,KBUF_R-1
     JMP     L_INPUT_STMT_3
 ;
 ; INPUT statement
@@ -3364,10 +3384,12 @@ L_LPOPER:
 ;	XRA	A								;(SET TO 1 AT FUNDSP TO SUPPRESS
 ;	STA	FLGOVC							;MULTIPLE OVERFLOW MESSAGES)
 L_TSTOP:
-    SHLD    TEMP2_R						;store text ptr
+L_EVAL2:
+    SHLD    TEMP2_R						;NXTOPR_R Save address of next operator
 L_RETAOP:
-    LHLD    TEMP2_R						;restore text ptr
-    POP     B							;restore priority
+L_EVAL3:
+    LHLD    TEMP2_R						;NXTOPR_R Restore address of next operator
+    POP     B							;Precedence value and operator
 L_NOTSTV:
     MOV     A,M							;next char/token
     SHLD    TEMP3_R						;save src ptr
@@ -3749,7 +3771,7 @@ L_EVAL_4:								;evaluate expression in parens
 R_DO_MINUS:
     MVI     D,7DH						;priority
     CALL    L_LPOPER
-    LHLD    TEMP2_R
+    LHLD    TEMP2_R						;NXTOPR_R
     PUSH    H
     CALL    L_VNEG
 L_POPHL_RET_2:							;duplicate
@@ -4188,8 +4210,8 @@ L_LIST_LOOP:
     JZ      +
     MVI     A,' '
     OUTCHR								;Send character in A to screen/printer
-+	CALL    L_EXPND_BASIC_LN			;copy Basic txt line to INPBUF_R
-    LXI     H,INPBUF_R					;Keyboard buffer
++	CALL    L_EXPND_BASIC_LN			;copy Basic txt line to KBUF_R
+    LXI     H,KBUF_R					;Keyboard buffer
     CALL    R_BUF_TO_LCD				;Send buffer at M to screen
     CALL    L_PRINT_CRLF
     JMP     L_LIST_LOOP
@@ -4217,7 +4239,7 @@ R_BUF_TO_LCD:							;11A2H
     JMP     R_BUF_TO_LCD				;Send buffer at M to screen
 
 L_EXPND_BASIC_LN:
-    LXI     B,INPBUF_R				    ;Keyboard buffer
+    LXI     B,KBUF_R				    ;Keyboard buffer
     MVI     D,0FFH						;maximum BASIC line length
     XRA     A
     STA     DORES_R						;clear WHETHER CAN OR CAN'T CRUNCH RES'D WORDS
@@ -4270,19 +4292,19 @@ L_EXPND_BASIC_LN_3:
     LXI     H,L_EXPND_BASIC_LN_4		;use continuation function to save 4 bytes
     PUSH    H
     RNZ									;to L_EXPND_BASIC_LN_4 if A != 0FFH
-    DCX     B							;backup in INPBUF_R
+    DCX     B							;backup in KBUF_R
     LDAX    B							
     CPI     'M'
     RNZ									;to L_EXPND_BASIC_LN_4 if A != 'M'
-    DCX     B							;backup in INPBUF_R
+    DCX     B							;backup in KBUF_R
     LDAX    B
     CPI     'E'
     RNZ									;to L_EXPND_BASIC_LN_4 if A != 'E'
-    DCX     B							;backup in INPBUF_R
+    DCX     B							;backup in KBUF_R
     LDAX    B
     CPI     'R'
     RNZ									;to L_EXPND_BASIC_LN_4 if A != "R'
-    DCX     B							;backup in INPBUF_R
+    DCX     B							;backup in KBUF_R
     LDAX    B
     CPI     ':'
     RNZ									;to L_EXPND_BASIC_LN_4 if A != ':'
@@ -4339,7 +4361,7 @@ L_EXPND_BASIC_LN_10:
     JNZ		-
     ANI     7FH							;01111111 clear bit 7
 ; copy BASIC keyword to buffer
--	STAX    B							;copy char to INPBUF_R
+-	STAX    B							;copy char to KBUF_R
     INX     B							;next
     DCR     D							;token length
     JZ      L_POP_PSW_RET				;brif 0: pop PSW, ret
@@ -4350,13 +4372,13 @@ L_EXPND_BASIC_LN_10:
     POP     H
     JMP     L_EXPND_BASIC_LN_2
 ;
-; Copy from (DE) to (BE) until DE == [VARTAB_R]
+; Copy from (HL) to (BC) until DE == [VARTAB_R]
 ;
 ; IN:
 ;	BC		destination ptr
 ;	HL		src ptr
 ;
-L_COPY_TO_VARTAB:
+L_DELETE_BA_LINE:
     XCHG								;argument HL to DE
     LHLD    VARTAB_R					;Start of variable data pointer
 -	LDAX    D
@@ -4908,7 +4930,7 @@ R_RAM_OPEN:								;1506H
     JZ      L_RAM_OPEN_MODE8
 ; File open Mode 2: output
 L_RAM_OPEN_MODE2:
-    CALL    R_OPEN_TXT_FILE_OUTPUT		;Open a text file at FILNAM_R. DE is Directory ptr
+    CALL    R_MAKTXT					;Open a text file at FILNAM_R. DE is Directory ptr
     JC      L_RAM_EXISTS				;brif File already exists: delete if possible
     PUSH    D							;save DE
     CALL    L_UPD_FOR_LOOPS				;update FOR loops stack chain with offset 1 (^Z)
@@ -5427,7 +5449,7 @@ R_MDM_OPEN:								;176CH
 ; Open COM file. Supports both MDM and Serial port
 ;
 R_COM_OPEN:								;176DH
-    STC									;set carry: use RS232 port
+    STC									;set carry: use Serial port
     PUSH    PSW							;save carry
     CC      R_DISCONNECT_PHONE       	;Disconnect phone line and disable modem carrier
     POP     PSW							;restore carry
@@ -5435,7 +5457,7 @@ R_COM_OPEN:								;176DH
     PUSH    H							;save FCB ptr
     PUSH    D							;save Open Mode
     LXI     H,FILNAM_R					;Current Filename
-    CALL    R_SET_RS232_PARAMS       	;Set RS232 parameters from string at M
+    CALL    R_SET_SERIAL_PARAMS       	;Set Serial parameters from string at M
     POP     D							;restore Open Mode
     MOV     A,E							;get File Open Mode
     CPI     08H							;append
@@ -5462,7 +5484,7 @@ R_COM_OPEN:								;176DH
 ; Close COM file
 ;
 R_COM_CLOSE:							;179EH
-    CALL    R_UNINIT_RS232_MDM       	;Deactivate RS232 or modem
+    CALL    R_UNINIT_SERIAL_MDM       	;Deactivate Serial or modem
     XRA     A
     STA     FILSTAT_R					;clear File Status
     JMP     R_LCD_CLOSE_FUN				;LCD), CRT), and LPT file close routine
@@ -5485,7 +5507,7 @@ R_COM_OUT:								;17A8H
 R_COM_IN:								;17B0H
     LXI     H,FILSTAT_R
     CALL    L_TSTFILSTAT
-    CALL    R_READ_RS232_QUEUE       	;Get a character from RS232 receive queue
+    CALL    L_READ_SERIAL_BUF       	;Get a character from Serial receive queue
     JC      R_GEN_IO_ERROR				;Generate I/O error
     CPI     1AH							;^Z
     STC									;clear Carry
@@ -5524,10 +5546,10 @@ R_MDM_CLOSE:							;17DBH
 	endif
     JMP     R_COM_CLOSE				    ;Close COM file
 ;
-; Set RS232 parameters from string at M
-; IN: carry means RS232, else MODEM; no baud rate if MODEM
+; Set Serial parameters from string at M
+; IN: carry means Serial, else MODEM; no baud rate if MODEM
 ;
-R_SET_RS232_PARAMS:				    	;17E6H
+R_SET_SERIAL_PARAMS:				    	;17E6H
     PUSH    PSW							;save carry
     LXI     B,R_GEN_NM_ERR_FUN			;error exit
     PUSH    B
@@ -5615,20 +5637,20 @@ L_STORE_IGNORE_PARITY:
     LXI     D,SERMOD_R					;Serial initialization string
     MVI     B,05H						;length
     MOV     A,M							;baud rate
-    JC		L_SET_RS232_1				;brif carry
+    JC		L_SET_SERIAL_1				;brif carry
     MVI     A,'M'						;Replace baud rate with 'M'
-L_SET_RS232_1:							;copy RS232 parameters
+L_SET_SERIAL_1:							;copy Serial parameters
     STAX    D
     INX     H
     INX     D
     CALL    R_CONV_M_TOUPPER		  	;Get char at M and convert to uppercase
     DCR     B
-    JNZ     L_SET_RS232_1
+    JNZ     L_SET_SERIAL_1
     XCHG								;move command ptr to DE 
     POP     H							;restore encoded serial parameters
-    POP     PSW							;restore carry (RS232 or MODEM)
+    POP     PSW							;restore carry (Serial or MODEM)
     PUSH    D							;save command ptr
-    CALL    R_INIT_RS232_MDM		  	;Initialize RS232 or modem
+    CALL    R_INIT_SERIAL_MDM		  	;Initialize Serial or modem
     POP     H							;restore command ptr to HL
     RET
 ;
@@ -5730,10 +5752,10 @@ L_UPD_FOR_LOOPS_2:
     ANA     A
     RZ									;retif [stack chain] == 0
     XCHG
-    LHLD    STRBUF_R					;BASIC string buffer pointer to DE
+    LHLD    STRP_R						;BASIC string pool pointer to DE
     XCHG
-    COMPAR								;Compare STRBUF_R and stack chain: HL - DE
-    RNC									;retif stack chain >= STRBUF_R
+    COMPAR								;Compare STRP_R and stack chain: HL - DE
+    RNC									;retif stack chain >= STRP_R
     MOV     A,M							;get marker again
     CPI     _FOR						;81H
     LXI     D,0007H						;preload default length
@@ -6863,44 +6885,49 @@ L_LCOPY_STMT_1:
     JNZ     L_LCOPY_STMT_1				;row loop
     POP     H
     RET
-
+;
+; Jumped to, not called
+;
+; IN:
+;	stack	Marker: 0AFH (LOAD), Z (MERGE) and carry (RUN)
+;
 L_RAMFILE:
-    PUSH    H
+    PUSH    H							;save txt ptr
     CALL    LNKFIL						;Fix up the directory start pointers
     LHLD    FILNAM_R+6					;Get Filename extension
     LXI     D,2020H						;"  "
     COMPAR								;Compare extension with "  ": HL - DE
-    PUSH    PSW
+    PUSH    PSW							;save compar result
     JZ      +
     LXI     D,4142H						;"BA"
     COMPAR								;Compare extension with "BA": HL - DE
     JNZ     L_RAMFILE_1
-+	CALL    L_SET_EXT_BA				;set "BA" extension and find file
-    JZ      L_RAMFILE_1
-    POP     PSW							;stack cleanup
-    POP     B
-    POP     PSW							;new Z flag
-    JZ      R_GEN_FC_ERROR				;Generate FC error
-    MVI     A,00H						;save flags
-    PUSH    PSW
-    PUSH    B
++	CALL    L_SET_EXT_BA				;set "BA" extension and find file: DE Filestart ptr. HL Directory Entry
+    JZ      L_RAMFILE_1					;brif file not found
+    POP     PSW							;stack cleanup: compar result
+    POP     B							;txt ptr
+    POP     PSW							;Marker: 0AFH (LOAD), Z (MERGE) and carry (RUN)
+    JZ      R_GEN_FC_ERROR				;brif MERGE: Generate FC error
+    MVI     A,00H						;clear A without affecting flags
+    PUSH    PSW							;Marker: Z (MERGE) and carry (RUN)	
+    PUSH    B							;save txt ptr
     SHLD    RAMDIRPTR_R
-    XCHG
+    XCHG								;DE to HL
     SHLD    TXTTAB_R					;Start of BASIC program pointer
     CALL    R_UPDATE_LINE_ADDR       	;Update line addresses for current BASIC program
-    POP     H							;text ptr
+    POP     H							;restore text ptr
     MOV     A,M							;next char
     CPI     ','
     JNZ     +
     CHRGET								;Get next non-white char from M
 	SYNCHK	'R'
-    POP     PSW
+    POP     PSW							;Marker: Z (MERGE) and carry (RUN)	
     MVI     A,80H
     STC
     PUSH    PSW
-+	POP     PSW
-    STA     OPNFIL_R
-    JC      R_INIT_BASIC_VARS			;Initialize BASIC Variables for new execution
++	POP     PSW							;Marker: Z (MERGE) and carry (RUN)	
+    STA     OPNFIL_R					;00H or 80H
+    JC      R_INIT_BASIC_VARS			;brif RUN: Initialize BASIC Variables for new execution
     CALL    R_INIT_BASIC_VARS			;Initialize BASIC Variables for new execution
     JMP     R_GO_BASIC_RDY_OK			;Vector to BASIC ready - print Ok
 
@@ -7153,7 +7180,7 @@ R_KILL_BA_FILE_2:
     INX     H
     CALL    L_DEL_BYTES					;Delete Bytes between HL and DE
     PUSH    B							;save negated delete count
-    CALL    LNKFIL					;Fix up the directory start pointers
+    CALL    LNKFIL						;Fix up the directory start pointers
     POP     B							;restore negated delete count
     POP     PSW							;COMPAR result
     RZ									;return if DE == HL at COMPAR
@@ -7290,7 +7317,7 @@ L_FND_DIR_ENTRY_1:
     DCX     H
     ANA     A							;test Filetype
     RET
-; ====================================================
+;
 ; Find Non-Empty directory entry
 ; IN:
 ;	HL points to previous Entry
@@ -7299,7 +7326,7 @@ L_FND_DIR_ENTRY_1:
 ;	new entry ptr in HL, type in A
 ;	Z if end of directory
 ; saves BC
-; ====================================================
+;
 L_FindNextDirEntry:
     PUSH    B
     LXI     B,RAMDIRLEN					;000BH
@@ -7402,7 +7429,7 @@ L_DEL_BYTES:
 ; Return
 ;
 ; When the top address of the next file is searched, the pointers
-; ASCTAB and BINTAB are useful to know what kind of file is currently being searched.
+; ASCTAB_R and BINTAB_R are useful to know what kind of file is currently being searched.
 ;
 LNKFIL:									;2146H
     XRA     A							;preload BASIC file type (BA=0)
@@ -7571,7 +7598,7 @@ R_GET_FIND_DO_FILE:						;2206H
 ;	carry		Set if file already exists
 ;
 R_MAKTXT:
-R_OPEN_TXT_FILE_OUTPUT:					;220FH
+;R_OPEN_TXT_FILE_OUTPUT:					;220FH
     CALL    LNKFIL						;Fix up the directory start pointers
     CALL    R_FINDFILE
     XCHG								;Directory ptr to DE
@@ -8479,7 +8506,7 @@ L_STR_1:
     MOV     A,M							;string length
     INX     H							;increment string ptr
     PUSH    H							;save string descriptor ptr
-    CALL    L_RESERVE_STRBUF			;Reserve space in BASIC string buffer. Returns ptr in DE
+    CALL    L_GET_STRP			;Reserve space in BASIC string pool. Returns ptr in DE
     POP     H							;restore string descriptor ptr
     MOV     C,M							;get string value ptr to BC
     INX     H
@@ -8487,14 +8514,14 @@ L_STR_1:
     CALL    L_SET_TRSNSTR				;Save A and DE to transient string storage
     PUSH    H							;save ptr to transient string storage
     MOV     L,A
-    CALL    R_MOVE_L_BYTES				;move L bytes from BC to DE
+    CALL    L_TOSTRA				;move L bytes from BC to DE
     POP     D							;restore ptr to transient string storage
     RET									;to continuation function
 
 L_PREP_STR_LEN1:
     MVI     A,01H
 L_PREP_STR:
-    CALL    L_RESERVE_STRBUF			;Reserve space in BASIC string buffer. Returns ptr in DE
+    CALL    L_GET_STRP			;Reserve space in BASIC string pool. Returns ptr in DE
 ;
 ; Move String Descriptor in A, DE to TRSNSTR_R
 ;
@@ -8557,16 +8584,16 @@ L_STR_LOOP:
 L_STRSTK_ADD:
     LXI     D,TRSNSTR_R					;transient string storage
     MVI     A,0D5H						;TODO A unused?
-    LHLD    TEMPPT_R					;current String Stack ptr (points to next free entry)
+    LHLD    FRETOP_R					;current String Stack ptr (points to next free entry)
     SHLD    IFACLO_R					;FAC1 for integers
     MVI     A,03H						;type STRING
     STA     VALTYP_R					;Type of last expression used
     CALL    R_MOVE_TYP_BYTES_INC		;3 bytes from (DE) to M. DE & HL incremented by 3
-; HL is new TEMPPT_R 
+; HL is new FRETOP_R 
 ; TODO DE already is TEMPST_R+33 since TRSNSTR_R+3 == TEMPST_R+33
     LXI     D,TEMPST_R+33				;0FB8CH: String Stack Area upper limit
     COMPAR								;Compare HL and TRSNSTR_R+3: HL - DE
-    SHLD    TEMPPT_R					;set new String Stack ptr
+    SHLD    FRETOP_R					;set new String Stack ptr
     POP     H							;restore text ptr
     MOV     A,M							;get next char
     RNZ									;COMPAR result
@@ -8593,12 +8620,12 @@ L_PRINT_LST_STR:
     INX     B
     JMP     -
 ;
-; Reserve space in BASIC string buffer
+; Reserve space in BASIC string pool
 ;
-; STRBUF_R holds a pointer to the start of the String Buffer Area
-; MEMSIZ_R holds a pointer to the end of the String Buffer Area
+; STRP_R holds a pointer to the start of the String pool
+; MEMSIZ_R holds a pointer to the end of the String pool
 ; String buffer area grows from top to bottom
-; FRETOP_R holds a pointer to the free area of the String Buffer Area
+; STRPFRE_R holds a pointer to the free area of the String pool
 ;
 ; IN:
 ;	A		string length
@@ -8607,30 +8634,30 @@ L_PRINT_LST_STR:
 ;	DE		ptr to reserved string space
 ;
 L_GETSPA:
-L_RESERVE_STRBUF:
+L_GET_STRP:
     ORA     A							;set flags for string length
 	SKIP_BYTE_INST_C					;skip POP PSW
 L_TRYGI2:								;used as continuation function w/ PSW pushed
     POP     PSW
     PUSH    PSW							;save length and flags
-    LHLD    STRBUF_R					;ptr to start of BASIC string buffer to DE
+    LHLD    STRP_R						;ptr to start of BASIC string pool to DE
     XCHG
-    LHLD    FRETOP_R					;Pointer to free area in BASIC string buffer to HL
+    LHLD    STRPFRE_R					;Pointer to free area in BASIC string pool to HL
     CMA  								;negate length 
     MOV     C,A							;sign extend to BC
     MVI     B,0FFH
-    DAD     B							;subtract length+1 from FRETOP_R
+    DAD     B							;subtract length+1 from STRPFRE_R
     INX     H							;correct for +1
-    COMPAR								;Compare new FRETOP_R with buffer start: HL - DE
+    COMPAR								;Compare new STRPFRE_R with buffer start: HL - DE
     JC      L_GARBAG					;brif buffer overflow
-    SHLD    FRETOP_R					;update Pointer to current location in BASIC string buffer
+    SHLD    STRPFRE_R					;update Pointer to current location in BASIC string pool
     INX     H							;ptr to string value ptr
-    XCHG								;BASIC string buffer pointer back to HL
+    XCHG								;BASIC string pool pointer back to HL
 L_POP_PSW_RET:							;tail merge entry
     POP     PSW							;remove length and flags
     RET
 ;
-; no space for requested string length in BASIC string buffer area
+; no space for requested string length in BASIC string pool area
 ; do garbage collection
 ;
 L_GARBAG:
@@ -8644,7 +8671,7 @@ L_GARBAG:
 L_GARBA2:
     LHLD    MEMSIZ_R					;File buffer area pointer. Also end of dynamic Strings Buffer
 L_FNDVAR:
-    SHLD    FRETOP_R					;reset free ptr in BASIC string buffer
+    SHLD    STRPFRE_R					;reset free ptr in BASIC string pool
     LXI     H,0							;0 on stack
     PUSH    H
     LHLD    STRGEND_R  					;Unused memory pointer
@@ -8652,9 +8679,9 @@ L_FNDVAR:
     LXI     H,TEMPST_R					;String Temp Area
 L_TVAR:									;used as continuation function
     XCHG
-    LHLD    TEMPPT_R					;DE = String Stack ptr
+    LHLD    FRETOP_R					;DE = String Stack ptr
     XCHG
-    COMPAR								;Compare TEMPPT_R with init value: HL - DE
+    COMPAR								;Compare FRETOP_R with init value: HL - DE
     LXI     B,L_TVAR					;continuation function
     JNZ     L_DVAR2						;DO TEMP VAR GARBAGE COLLECT
 ; String Temps empty
@@ -8753,7 +8780,7 @@ L_DVARS:
     RZ									;NULL STRING, RETURN
     MOV     B,H							;save HL
     MOV     C,L
-    LHLD    FRETOP_R					;Pointer to current location in BASIC string buffer
+    LHLD    STRPFRE_R					;Pointer to current location in BASIC string pool
     COMPAR								;HL - DE
     MOV     H,B							;restore HL
     MOV     L,C
@@ -8797,7 +8824,7 @@ L_GRBPAS:
     DCX     H							;DON'T MOVE ONE BEYOND STRING
     MOV     B,H							;GET TOP OF STRING IN BC
     MOV     C,L
-    LHLD    FRETOP_R					;GET TOP OF FREE SPACE
+    LHLD    STRPFRE_R					;GET TOP OF FREE SPACE
     CALL    L_CPY_BC_TO_HL				;L_BLTUC MOVE STRING
     POP     H							;GET BACK POINTER TO DESC.
     MOV     M,C							;SAVE FIXED ADDR
@@ -8811,34 +8838,35 @@ L_GRBPAS:
 ;string concatenation
 ;
 L_STR_CONCAT:
-    PUSH    B
+    PUSH    B							;ave prec' opr & code string
     PUSH    H
-    LHLD    IFACLO_R					;FAC1 for integers
-    XTHL
-    CALL    L_EVAL						;Evaluate function at M
-    XTHL
-    CALL    L_CHKSTR
-    MOV     A,M
-    PUSH    H							;ptr to str1
-    LHLD    IFACLO_R					;FAC1 for integers
-    PUSH    H							;ptr to str2
-    ADD     M							;new string length
-    LXI     D,000FH
-    JC      R_GEN_ERR_IN_E				;Generate error 15. if overflow
-    CALL    L_PREP_STR					;Reserve String space and set Transitory String
-    POP     D
-    CALL    L_FRETMP					;Get pointer to stack string (Len + address). POP based on DE
-    XTHL
-    CALL    L_FRETM2
-    PUSH    H							;ptr to string
-    LHLD    TRSNSTR_R+1					;TRSNSTR_R+1 to DE
+    LHLD    IFACLO_R					;Get first string
+    XTHL								;Save first string
+    CALL    L_EVAL						;Get second string
+    XTHL								;Restore first string
+    CALL    L_CHKSTR					;Make sure it's a string
+    MOV     A,M							;Get length of second string
+    PUSH    H							;save first string
+    LHLD    IFACLO_R					;Get second string
+    PUSH    H							;save second string
+    ADD     M							;Add length of second string
+    LXI     D,000FH						;?LS Error
+    JC      R_GEN_ERR_IN_E				;Generate LS error (15) if overflow
+    CALL    L_PREP_STR					;Reserve String space and set Transitory String: Make temporary string
+    POP     D							;Get second string to DE
+; Get pointer to stack string (Len + address). POP based on DE
+    CALL    L_FRETMP					;GSTRDE: Move to string pool if needed
+    XTHL								;Get first string
+    CALL    L_FRETM2					;Move to string pool if needed
+    PUSH    H							;Save first string
+    LHLD    TRSNSTR_R+1					;Temporary string address to DE
     XCHG
-    CALL    L_StrCpy			       	;Memory copy using args pointed to by ptr on stack
-    CALL    L_StrCpy			       	;Memory copy using args pointed to by ptr on stack
-    LXI     H,L_TSTOP					;continuation function
-    XTHL								;eval entry point to stack. value on stack (textptr?) to HL
-    PUSH    H							;text ptr
-    JMP     L_STRSTK_ADD				;add Transient String to String Stack
+    CALL    L_SSTSA				       	;First string to string area: Memory copy using args pointed to by ptr on stack
+    CALL    L_SSTSA				       	;Second string to string area: Memory copy using args pointed to by ptr on stack
+    LXI     H,L_TSTOP					;Return to evaluation loop: continuation function
+    XTHL								;Save return,get code string
+    PUSH    H							;Save code string
+    JMP     L_STRSTK_ADD				;add Transient String to String Stack: To temporary string to pool
 ;
 ; Memory copy using args pointed to by ptr on stack
 ;
@@ -8847,7 +8875,7 @@ L_STR_CONCAT:
 ;
 ;	on stack: ptr to source string
 ;
-L_StrCpy:								;2904H
+L_SSTSA:								;2904H
     POP     H							;return address
     XTHL								;previously pushed ptr to HL, return address to stack
     MOV     A,M							;length
@@ -8859,13 +8887,12 @@ L_StrCpy:								;2904H
 ;
 ;Move L bytes from (BC) to (DE)
 ;
-;
 ; IN:
 ;	L		String Length
 ;	BC		source
 ;	DE		destination
 ;
-R_MOVE_L_BYTES:
+L_TOSTRA:
     INR     L							;pre-inc length
 -	DCR     L							;decrement length
     RZ									;retif length now 0
@@ -8892,7 +8919,7 @@ R_MOVE_L_BYTES:
 L_FRESTR:								;FREE UP TEMP & CHECK STRING
     CALL    L_CHKSTR
 L_FREFAC:
-    LHLD    IFACLO_R					;[FAC1]
+    LHLD    IFACLO_R					;Get current string
 L_FRETM2:
     XCHG								;to DE
 ; 
@@ -8909,18 +8936,18 @@ L_FRETMP:
     MOV     E,C
     DCX     D
     MOV     C,M							;string length
-    LHLD    FRETOP_R					;Pointer to current location in BASIC string buffer
-    COMPAR								;[FRETOP_R] - DE
+    LHLD    STRPFRE_R					;Pointer to current location in BASIC string pool
+    COMPAR								;[STRPFRE_R] - DE: String last in string pool?
     JNZ     +							;brif not identical
 ;A== 0 if COMPAR returns Z
     MOV     B,A							;zero extend C to BC
     DAD     B
-    SHLD    FRETOP_R					;update current location in BASIC string buffer
+    SHLD    STRPFRE_R					;update current location in BASIC string pool
 +	POP     H
     RET
 ; 
 ; POP string from string stack if same as String Descriptor in DE
-; TEMPST_R grows up. TEMPPT_R points to first free entry
+; TEMPST_R grows up. FRETOP_R points to first free entry
 ; each entry is 3 bytes. Max 10 entries.
 ;
 ; IN:
@@ -8932,16 +8959,16 @@ L_FRETMP:
 ;	HL		ptr to most recently pushed string descriptor
 ; 
 L_FRETMS:
-    LHLD    TEMPPT_R					;String Stack address (first free)
+    LHLD    FRETOP_R					;String Stack address (first free)
 ; HL points past last pushed string descriptor
     DCX     H							;Pre-decrement to get MSB of string address
     MOV     B,M							;Get MSB string data ptr of top entry
     DCX     H							;Decrement to LSB of string address
     MOV     C,M							;Get LSB string data ptr of top entry
     DCX     H							;Decrement again to point to string length of top entry
-    COMPAR								;[TEMPPT_R] - 3 - DE
+    COMPAR								;[FRETOP_R] - 3 - DE
     RNZ									;Don't update string stack ptr if not same as target String Descriptor
-    SHLD    TEMPPT_R					;update String Stack ptr
+    SHLD    FRETOP_R					;update String Stack ptr
     RET									;return with Z set
 ;
 ; LEN function
@@ -9055,7 +9082,7 @@ L_LEFT_STR_3:							;continuation function
 	SKIP_2BYTES_INST_DE
 +	MVI     C,00H
     PUSH    B
-    CALL    L_RESERVE_STRBUF			;Reserve space in BASIC string buffer. Returns ptr in DE
+    CALL    L_GET_STRP			;Reserve space in BASIC string pool. Returns ptr in DE
     POP     B
     POP     H
     PUSH    H
@@ -9070,7 +9097,7 @@ L_LEFT_STR_3:							;continuation function
     MOV     C,L
     CALL    L_SET_TRSNSTR				;Save A and DE to transient string storage
     MOV     L,A							;length
-    CALL    R_MOVE_L_BYTES				;move L bytes from BC to DE
+    CALL    L_TOSTRA				;move L bytes from BC to DE
     POP     D
     CALL    L_FRETMP					;Get pointer to stack string (Len + address). POP based on DE
     JMP     L_STRSTK_ADD
@@ -9419,9 +9446,9 @@ R_FRE_FUN:								;2B4CH
     CALL    L_FREFAC
     CALL    L_GARBA2
     XCHG
-    LHLD    STRBUF_R					;BASIC string buffer pointer to DE
+    LHLD    STRP_R						;BASIC string pool pointer to DE
     XCHG
-    LHLD    FRETOP_R					;Pointer to current location in BASIC string buffer
+    LHLD    STRPFRE_R					;Pointer to current location in BASIC string pool
     JMP     L_SUB_DE_FROM_HL			;Subtract HL - DE and unsigned convert to SNGL in FAC1
 ;
 ; Double precision subtract (FAC1=FAC1-FAC2)
@@ -12526,7 +12553,7 @@ L_FOUTE1:
     JNZ     L_PRNT_COMMA				;brif B != 0
 L_FOUTDP:								;print '.'
     MVI     M,'.'					
-    SHLD    TEMP2_R					;ptr to last period printed
+    SHLD    TEMP2_R						;ptr to last period printed
     INX     H							;next
     MOV     C,B							;now zero
     RET
@@ -12991,7 +13018,7 @@ R_GETSTK2:
     RC
 L_OUTOFMEMORY:
     CALL    R_UPDATE_LINE_ADDR       	;Update line addresses for current BASIC program
-    LHLD    STRBUF_R					;BASIC string buffer pointer
+    LHLD    STRP_R						;BASIC string pool pointer
     DCX     H
     DCX     H
     SHLD    BASSTK_R					;SP used by BASIC to reinitialize the stack
@@ -13022,10 +13049,10 @@ R_INIT_BASIC_VARS_3:
     MOV     L,A
     MOV     H,A
     SHLD    ONERR_R						;Address of ON ERROR routine
-    SHLD    OLDTXT_R					;Address where program stopped on last break), END), or STOP
+    SHLD    CONTAD_R					;Address where program stopped on last break), END), or STOP
     LHLD    MEMSIZ_R					;File buffer area pointer.  Also end of Strings Buffer Area.
-    SHLD    FRETOP_R					;Pointer to current location in BASIC string buffer
-    CALL    R_RESTORE_STMT				;RESTORE statement
+    SHLD    STRPFRE_R					;Pointer to current location in BASIC string pool
+    CALL    R_RESTORE_STMT				;RESTORE statement: uses Z flag from XRA A above
     LHLD    VARTAB_R				    ;Start of variable data pointer
     SHLD    ARYTAB_R				    ;ptr to Start of array table
     SHLD    STRGEND_R				    ;Unused memory pointer
@@ -13038,17 +13065,17 @@ R_INIT_BASIC_VARS_3:
 ; Initialize BASIC for new execution
 ; 
 L_INIT_BASIC:
-    POP     B							;Code address
-    LHLD    STRBUF_R					;BASIC string buffer pointer
+    POP     B							;return address
+    LHLD    STRP_R						;BASIC string pool pointer
     DCX     H							;leave 2 bytes
     DCX     H
     SHLD    BASSTK_R					;SP used by BASIC to reinitialize the stack
-    INX     H							;back to [STRBUF_R]
+    INX     H							;back to [STRP_R]
     INX     H
 L_INIT_BASIC_0:						 	;BC contains a code address
     SPHL								;set stack pointer
     LXI     H,TEMPST_R
-    SHLD    TEMPPT_R					;initialize String Stack ptr
+    SHLD    FRETOP_R					;initialize String Stack ptr
     CALL    R_SET_OUT_DEV_LCD			;Reinitialize output back to LCD
     CALL    L_FINPRT
 ;clear all these variables
@@ -13289,6 +13316,9 @@ L_ON_COM_INTR:
 ;
 ; RESTORE statement
 ;
+; IN:
+;	Z		skip actual restore if set
+;
 R_RESTORE_STMT:							;407FH
     XCHG
     LHLD    TXTTAB_R					;Start of BASIC program pointer
@@ -13326,24 +13356,24 @@ R_END_STMT:								;409FH
     CZ      R_CLSALL					;A always 0. Close Files
     POP     PSW							;TODO cheaper to clear A again
 L_CONSTP:								;A==0 if END. A==1 if STOP
-    SHLD    SAVTXT_R					;Most recent or currenly running line pointer (SAVTXT: SAVE FOR "CONTINUE")
+    SHLD    BRKLIN_R					;Most recent or currenly running line pointer (SAVTXT: SAVE FOR "CONTINUE")
     LXI     H,TEMPST_R					;(TEMPST)
-    SHLD    TEMPPT_R					;reset String Stack ptr (TEMPPT)
+    SHLD    FRETOP_R					;reset String Stack ptr (TEMPPT)
 	SKIP_2BYTES_INST_HL					;skip ORI 0FFH instruction. A==0 or 1
 L_STPEND:
     ORI     0FFH						;SET NON-ZERO TO FORCE PRINTING OF BREAK MESSAGE
-    POP     B							;POP OFF L_NEWSTT ADDRESS
+    POP     B							;POP OFF L_NEWSTT ADDRESS: Return not needed and more
 L_ENDCON:
     LHLD    CURLIN_R					;Currently executing line number
     PUSH    H							;SAVE LINE TO PRINT
-    PUSH    PSW							;SAVE THE MESSAGE FLAG ZERO MEANS DON'T PRINT "BREAK"
+    PUSH    PSW							;SAVE THE MESSAGE FLAG ZERO MEANS DON'T PRINT "BREAK": STOP / END status
     MOV     A,L							;See IF IT WAS DIRECT 
     ANA     H
     INR     A
     JZ      L_DIRIS						;IF NOT SET UP FOR CONTINUE
     SHLD    OLDLIN_R					;Line where break), END), or STOP occurred. ;SAVE OLD LINE #
-    LHLD    SAVTXT_R					;Most recent or currenly running line pointer ;GET POINTER TO START OF STATEMENT
-    SHLD    OLDTXT_R					;Address where program stopped on last break), END), or STOP ;SAVE IT
+    LHLD    BRKLIN_R					;Most recent or currenly running line pointer ;GET POINTER TO START OF STATEMENT
+    SHLD    CONTAD_R					;Address where program stopped on last break), END), or STOP ;SAVE IT
 L_DIRIS:
     CALL    R_SET_OUT_DEV_LCD			;Reinitialize output back to LCD FINLPT?
     CALL    R_LCD_NEW_LINE				;Move LCD to blank line (send CRLF if needed)
@@ -13356,19 +13386,19 @@ L_DIRIS:
 
 	LXI     H,R_BREAK_MSG				;Code Based. 
     JNZ     L_ERRFIN
-    JMP     R_POP_GO_BASIC_RDY       	;Pop stack and vector to BASIC ready
+    JMP     R_POP_GO_BASIC_RDY       	;Go to command mode
 ;
 ; CONT sttement
 ;
 R_CONT_STMT:							;40DAH
-    LHLD    OLDTXT_R					;Address where program stopped on last break), END), or STOP
+    LHLD    CONTAD_R					;Address where program stopped on last break), END), or STOP
 
 ;	MOV	A,H								;"STOP","END",TYPING CRLF
 ;	ORA	L								;TO "INPUT" AND ^C SETUP OLDTXT
 
     MOV     A,H
     ORA     L
-    LXI     D,0011H						;"CAN'T CONTINUE"
+    LXI     D,0011H						;"CAN'T CONTINUE" ?CN Error
     JZ      R_GEN_ERR_IN_E				;Generate error 11H
     XCHG								;save HL in DE
     LHLD    OLDLIN_R					;Line where break), END), or STOP occurred
@@ -13468,7 +13498,7 @@ L_CLEAR_2:
     COMPAR								;HL - DE
     JNC     L_OUTOFMEMORY
     XCHG								;new string space ptr to HL
-    SHLD    STRBUF_R					;update BASIC string buffer pointer
+    SHLD    STRP_R						;update BASIC string pool pointer
     MOV     H,B							;HL = BC
     MOV     L,C
     SHLD    HIMEM_R						;update HIMEM
@@ -14639,7 +14669,7 @@ R_INP_DISP_LINE_NO_Q:					;4644H
     JNZ     L_INP_FILE					;brif FCBLAST != 0
     LDA     CSRX_R						;Cursor column (1-40)
     STA     CSRXSVD_R					;saved Cursor column
-    LXI     D,INPBUF_R				    ;Keyboard buffer
+    LXI     D,KBUF_R				    ;Keyboard buffer
     MVI     B,01H
 ;
 ; Continuation function magic here
@@ -14685,7 +14715,7 @@ R_INP_CTRL_C_HANDLER:				    ;4684H
     MVI     A,'C'
     OUTCHR								;Send character in A to screen/printer
     CALL    R_SEND_CRLF				    ;Send CRLF to screen or printer
-    LXI     H,INPBUF_R				    ;Keyboard buffer
+    LXI     H,KBUF_R				    ;Keyboard buffer
     MVI     M,00H
     DCX     H
     STC
@@ -14704,7 +14734,7 @@ R_INP_ENTER_HANDLER:				  	;4696H
     CALL    R_SEND_CRLF				  	;Send CRLF to screen or printer
     XRA     A							;terminate buffer
     STAX    D
-    LXI     H,INPBUF_R-1				;Keyboard buffer
+    LXI     H,KBUF_R-1				;Keyboard buffer
     RET
 ;
 ; Input routine backspace), left arrow), CTRL-H handler
@@ -14782,7 +14812,7 @@ L_INP_DO_BKSP:
     DCR     B
     JZ      L_INP_DO_BKSP_1				;brif buffer counter == 0
     MOV     C,A							;saved CSRX_R
-    LXI     H,INPBUF_R					;Keyboard buffer ptr
+    LXI     H,KBUF_R					;Keyboard buffer ptr
 -	INR     C
     MOV     A,M
     CPI     09H							;TAB
@@ -14831,7 +14861,7 @@ L_INP_FILE:
 +	POP     H							;restore FCB ptr
     SHLD    FCBLAST_R					;restore FCB ptr for the last file used (2 bytes)
     MVI     B,00H						;count 256
-    LXI     H,INPBUF_R				  	;Keyboard buffer
+    LXI     H,KBUF_R				  	;Keyboard buffer
 -	XRA     A
     STA     FILNUM_R					;clear FILNUM_R (2 bytes)
     STA     FILNUM_R+1
@@ -14851,7 +14881,7 @@ L_INP_FILE:
 L_INP_FILE_1:								;CR
     XRA     A							;terminate buffer
     MOV     M,A
-    LXI     H,INPBUF_R-1				;Keyboard buffer
+    LXI     H,KBUF_R-1				;Keyboard buffer
     RET
 L_INP_FILE_2:
     MOV     A,B							;count
@@ -15105,20 +15135,21 @@ L_SUBSCRIPT:
     MOV     D,A							;subscripts counter
 ; push subscript values on the stack
 L_MULTIDIM:								;multi-dimensional loop start
-    PUSH    D							;save count
-    PUSH    B							;save BC
-    CALL    L_EVAL_POS_EXPR_PREINC		;get char & Evaluate positive expression at M-1 to DE
-    POP     B							;restore BC
-    POP     PSW							;restore count from DE to A
+L_SCPTLP:
+    PUSH    D							;Save number of dimensions
+    PUSH    B							;Save array name
+    CALL    L_EVAL_POS_EXPR_PREINC		;Get subscript (0-32767) to DE
+    POP     B							;restore array name
+    POP     PSW							;restore number of dimensions
     XCHG								;expression result to HL, txt ptr to DE
-    XTHL								;swap [SP] & HL
+    XTHL								;Save subscript value
     PUSH    H							;Variable Create/Locate switch (L) + VALTYP_R (H)
     XCHG								;txt ptr back to HL
-    INR     A							;increment subscripts count
+    INR     A							;increment dimensions count
     MOV     D,A							;store in D
     MOV     A,M							;next char
     CPI     ','
-    JZ      L_MULTIDIM					;brif multi-dimensional
+    JZ      L_SCPTLP					;brif multi-dimensional
     CPI     ')'
     JZ      +							;brif end of subscripts found
     CPI     ']'
@@ -15128,11 +15159,11 @@ L_MULTIDIM:								;multi-dimensional loop start
 ; above Variable Create/Locate switch (L) + VALTYP_R (H)
 ;
 +	CHRGET								;Get next non-white char from M
-    SHLD    TEMP2_R					;save txt ptr
-    POP     H							;Variable Create/Locate switch (L) + VALTYP_R (H)
-    SHLD    CRELOC_R					;store it. TODO Apparently CRELOC_R could change
-    MVI     E,00H						;zero extend subscripts counter
-    PUSH    D							;save subscripts count
+    SHLD    TEMP2_R						;NXTOPR_R save txt ptr
+    POP     H							;Variable Create/Locate switch (L) + VALTYP_R (H). Get LCRFLG and TYPE
+    SHLD    CRELOC_R					;Restore Locate/create & type
+    MVI     E,00H						;Flag not CSAVE* or CLOAD*
+    PUSH    D							;Save number of dimensions (D) & flags
 	SKIP_2BYTES_INST_DE					;skip PUSH H & PUSH PSW
 ;
 ; No subscript allowed entry point (DONT RECOGNIZE SUBSCRIPTED VARIABLES == 1)
@@ -15143,12 +15174,12 @@ L_NO_SUBSCRIPT:
     LHLD    ARYTAB_R					;ptr to Start of array table
 	SKIP_BYTE_INST						;Sets A to 0AFH. Skip DAD D first time through loop
 L_SUBSCRIPT_1:
-    DAD     D							;index ARYTAB ptr + 
+    DAD     D							;index ARYTAB_R ptr + 
     XCHG
     LHLD    STRGEND_R					;load Unused memory pointer to DE
     XCHG
-    COMPAR								;Compare Unused memory pointer and ARYTAB ptr: HL - DE
-    JZ      L_SUBSCRIPT_2				;brif ARYTAB ptr == Unused memory pointer: no Arrays yet
+    COMPAR								;Compare Unused memory pointer and ARYTAB_R ptr: HL - DE
+    JZ      L_SUBSCRIPT_2				;brif ARYTAB_R ptr == Unused memory pointer: no Arrays yet
 ; Add to array space
     MOV     E,M							;get VALTYP_R to E
     INX     H							;next
@@ -15180,7 +15211,7 @@ L_GEN_ERR_9:
 ;
 ; Add an array variable. subscripts count on stack
 ;
-; HL == ARYTAB ptr, DE == Unused memory pointer
+; HL == ARYTAB_R ptr, DE == Unused memory pointer
 ;
 ; Layout:	VALTYP_R			1 byte
 ;			variable name		2 bytes
@@ -15205,7 +15236,7 @@ L_SUBSCRIPT_2:
     CALL    R_GETSTK					;Test for C units free in stack space
     INX     H							;reserve 2 bytes
     INX     H
-    SHLD    TEMP3_R						;save ARYTAB ptr
+    SHLD    TEMP3_R						;save ARYTAB_R ptr
     MOV     M,C							;store subscripts count
     INX     H							;next
     LDA     CRELOC_R					;Variable Create/Locate switch
@@ -15256,7 +15287,7 @@ L_SUBSCRIPT_3:
     MOV     M,D
     INX     H
     POP     PSW							;restore carry (CRELOC_R = CREate or LOCate)
-    JC      L_SUBSCRIPT_7				;brif declaration: load TEMP2_R & return
+    JC      L_ENDDIM					;brif declaration: load TEMP2_R & return
 ;
 ; Locate array
 ; HL points to subscripts count in array
@@ -15274,12 +15305,12 @@ L_SUBSCRIPT_5:							;A == 0 entry point
     XTHL								;swap dimension ptr and [SP]
     PUSH    PSW							;save subscripts count
     COMPAR								;Compare dimension and array index: HL - DE
-    JNC     L_GEN_ERR_9					;brif HL >= DE: Generate error 9
-    CALL    L_INT16_MUL					;multiply DE and BC to DE
-    DAD     D							;Add to HL
-    POP     PSW							;restore subscripts count
-    DCR     A							;count down
-    MOV     B,H							;update BC
+    JNC     L_GEN_ERR_9					;brif HL >= DE: Generate error 9: ?BS Error
+    CALL    L_INT16_MUL					;Multiply previous by size (MLDEBC_L)
+    DAD     D							;Add index to pointer
+    POP     PSW							;restore dimensions count
+    DCR     A							;count them
+    MOV     B,H							;MSB,LSB of pointer
     MOV     C,L
     JNZ     -							;brif more subscripts
     LDA     VALTYP_R					;Type of last expression used
@@ -15289,18 +15320,18 @@ L_SUBSCRIPT_5:							;A == 0 entry point
     SUI     04H							;SNGL type?
     JC      +							;brif type < SNGL: INT or STR
 ; type now >= SNGL
-    DAD     H							;X4 flags not affected
+    DAD     H							;4 Bytes per element. flags not affected
     JZ      L_SUBSCRIPT_6				;brif type == SNGL
-    DAD     H							;X8 flags not affected
+    DAD     H							;8 Bytes per element. flags not affected
 +	ORA     A
     JPO     L_SUBSCRIPT_6				;brif A >= 0
     DAD     B							;HL += BC
 L_SUBSCRIPT_6:
-    POP     B							;restore BC
-    DAD     B							;HL += BC
-    XCHG								;result to DE
-L_SUBSCRIPT_7:
-    LHLD    TEMP2_R
+    POP     B							;Start of array
+    DAD     B							;Point to element
+    XCHG								;Address of element to DE
+L_ENDDIM:
+    LHLD    TEMP2_R						;NXTOPR_R get txt ptr
     RET
 ;
 ; USING function
@@ -15693,7 +15724,7 @@ R_LCD_NEW_LINE:							;4BB8H
 ;
     MVI     M,00H
     CALL    L_TST_FCBLAST
-    LXI     H,INPBUF_R-1				;Keyboard buffer
+    LXI     H,KBUF_R-1				;Keyboard buffer
     JNZ     L_RECORD_CR					;brif FCBLAST != 0
 L_PRINT_CRLF:
     MVI     A,0DH
@@ -16077,7 +16108,7 @@ L_MERGE_2:								;D has Device Code
 +	PUSH    PSW
     XRA     A							;File # == 0
     MVI     E,01H						;Open for Input marker
-    CALL    R_OPEN_FILE
+    CALL    R_OPEN_FILE					;sets FCBLAST_R
 L_MERGE_3:								;entry point with 2 x PSW on stack
     LHLD    FCBLAST_R					;FCB ptr for the last file used (2 bytes)
     LXI     B,FILPOS_IN_FCB_OFS			;0007H 
@@ -16095,10 +16126,10 @@ L_MERGE_3:								;entry point with 2 x PSW on stack
     ORA     A
     JM      L_SAVE_ERR2					;Generate NM error
     POP     PSW
-    CNZ     SCRTCH
-    CALL    R_CLSALL					;Close Files
+    CNZ     SCRTCH						;calif !merge: clear current program
+    CALL    R_CLSALL					;Close all files
     XRA     A
-    CALL    L_SETUP_FCB
+    CALL    L_SETUP_FCB					;re-open file 0 
     JMP     R_GO_BASIC_RDY				;Silent vector to BASIC ready
 ;
 ; SAVE statement
@@ -16159,7 +16190,7 @@ R_CLSALL:
     LDA     OPNFIL_R					;Any open files flag
     ORA     A
     RM
-    XRA     A
+    XRA     A							;sets Z flag
 ;
 ; CLOSE statement
 ;	CLOSE [file1, file2...]
@@ -16171,7 +16202,7 @@ R_CLOSE_STMT:							;4E28H
 ; just CLOSE: close all active File Numbers.
 ; default for MAXFILES_R is 1 so close file # 1 and 0
 ;
-    PUSH    H							;text ptr
+    PUSH    H							;
 -	PUSH    PSW
     ORA     A							;current file #
     CALL    L_CLS_FILENUM			;close file #
@@ -16498,7 +16529,7 @@ L_LINE_IN_0:							;on entry, DE contains char pattern
     MOV     E,A
     CALL    L_DEV_INPUT
     JC      L_LINE_IN_ERR				;brif error
-+	LXI     H,INPBUF_R				    ;Keyboard buffer
++	LXI     H,KBUF_R				    ;Keyboard buffer
     MVI     B,0FFH
 L_LINE_IN_1:
     MOV     C,A
@@ -16572,7 +16603,7 @@ L_LINE_IN_6:
     POP     H							;restore txt ptr
 L_LINE_IN_7:
     MVI     M,00H						;mark end of line
-    LXI     H,INPBUF_R-1				;Keyboard buffer
+    LXI     H,KBUF_R-1				;Keyboard buffer
     MOV     A,E
     SUI     ' '	
     JZ      +							;brif char < ' '
@@ -16957,8 +16988,8 @@ R_SET_TELCOM_STAT:						;51EDH
     CPI     'M'							;4DH
     JNZ     L_TELCOM_ERR
     INX     H							;skip 'M'
-+	CALL    R_SET_RS232_PARAMS       	;Set RS232 parameters from string at M
-    CALL    R_UNINIT_RS232_MDM       	;Deactivate RS232 or modem
++	CALL    R_SET_SERIAL_PARAMS       	;Set Serial parameters from string at M
+    CALL    R_UNINIT_SERIAL_MDM       	;Deactivate Serial or modem
     DCX     H
     CHRGET								;Get next non-white char from M
     ANA     A
@@ -17069,7 +17100,7 @@ L_CHK_UTILS_EOF:
 ;
 R_GO_OFFHOOK:							;52B4H
     INPORT	0BAH						;read 8155 PIO Port B
-    ANI     7FH							;clear bit 7: RTS (not) line for RS232
+    ANI     7FH							;clear bit 7: RTS (not) line for Serial
     OUTPORT	0BAH						;set 8155 PIO Port B
     RET
 ;
@@ -17080,7 +17111,7 @@ R_DISCONNECT_PHONE:						;52BBH
     CALL    L_DIS_MODEM_RELAY
 L_DISCONNECT_SERIAL:
     INPORT	0BAH						;read 8155 PIO Port B
-    ORI     80H							;set bit 7: RTS (not) line for RS232
+    ORI     80H							;set bit 7: RTS (not) line for Serial
     OUTPORT	0BAH						;set 8155 PIO Port B
     RET
 
@@ -17159,7 +17190,7 @@ L_PAUSE_1400uSec:
 R_EXEC_LOGON_SEQ:						;532DH
     INPORT	0BAH						;read 8155 PIO Port B
     PUSH    PSW							;save result
-    ORI     08H							;00001000 set bit 3: Serial toggle (1-Modem, 0-RS232)
+    ORI     08H							;00001000 set bit 3: Serial toggle (1-Modem, 0-Serial)
     OUTPORT	0BAH						;set 8155 PIO Port B
     CALL    R_DIALING_FUN				;Dialing routine. Returns carry
     POP     B							;last 8155 PIO Port B read
@@ -17234,14 +17265,14 @@ R_AUTO_LOGIN_SEQ:						;539EH
     PUSH    H							;save HL
     LXI     H,SERMOD_R+1				;skip 'M'
     ANA     A							;clear carry
-    CALL    R_SET_RS232_PARAMS       	;Set RS232 parameters from string at M
+    CALL    R_SET_SERIAL_PARAMS       	;Set Serial parameters from string at M
     MVI     A,04H
     CALL    L_PAUSE						;pause
     POP     H							;restore HL
     CALL    R_GO_OFFHOOK_WAIT			;Go off-hook and wait for carrier
     RC
 L_AUTO_LOG_1:
-    CALL    L_DRAIN_RS232_IN_QUEUE
+    CALL    L_DRAIN_SERIAL_IN_QUEUE
     CALL    L_NXTCHR_FROM_M
     RZ									;retif 0
     CPI     '>'
@@ -17266,7 +17297,7 @@ L_AUTO_LOG_3:
 L_AUTO_LOG_4:
     CALL    L_NXTCHR_FROM_M
     RZ									;retif 0
--	CALL    R_READ_RS232_QUEUE       	;Get a character from RS232 receive queue
+-	CALL    L_READ_SERIAL_BUF       	;Get a character from Serial receive queue
     RC									;retif SHIFT_BREAK 
     OUTCHR								;Send character in A to screen/printer
     CMP     M
@@ -17414,8 +17445,8 @@ R_SET_TELCOM_STAT:
     CPI     'M'							;use modem
     JNZ     L_TELCOM_ERR
     INX     H
-+	CALL    R_SET_RS232_PARAMS       	;Set RS232 parameters from string at M
-    CALL    R_UNINIT_RS232_MDM       	;Deactivate RS232 or modem
++	CALL    R_SET_SERIAL_PARAMS       	;Set Serial parameters from string at M
+    CALL    R_UNINIT_SERIAL_MDM       	;Deactivate Serial or modem
     DCX     H
     CHRGET								;Get next non-white char from M
     ANA     A
@@ -17453,7 +17484,7 @@ R_TELCOM_TERM_FUN:						;5455H
     CHRGET								;Get next non-white char from M. Return Carry if numeric (terminal)
     CNC     L_INCHL						;Increment HL. Carry unaffected. Skip 'M' if present
     PUSH    PSW							;save Carry (set if numeric)
-    CALL    R_SET_RS232_PARAMS			;Set RS232 parameters from string at M
+    CALL    R_SET_SERIAL_PARAMS			;Set Serial parameters from string at M
     POP     PSW							;restore carry
     CMC									;complement carry => Carry clear if numeric, set if modem
 	if	HWMODEM
@@ -17481,7 +17512,7 @@ L_TELCOM_TERM_2:
     CALL    L_RESET_SP					;Restore BASIC SP
     LXI     H,L_TELCOM_TERM_4			;continuation function
     SHLD    ACTONERR_R					;active ON ERROR handler vector
-    LDA     XONFLG_R					;XON/XOFF enable flag
+    LDA     XONXOFFENA_R				;XON/XOFF enable flag
     ANA     A
     JZ      L_TERMLOOP
     LDA     XONXOFF_R					;XON/XOFF protocol control
@@ -17503,10 +17534,10 @@ L_TERMLOOP:								;check for keyboard character
     CNZ     R_SEND_A_USING_XON       	;Send key character in A to serial port using XON/XOFF
     JC      L_TELCOM_TERM_3
 ;check for incoming serial character
-+	CALL    R_CHECK_RS232_QUEUE      	;Check RS232 queue for pending characters
++	CALL    L_CHECK_SERIAL_BUF      	;Check Serial Ring Buffer for pending characters
     JZ      L_TELCOM_TERM_2
-    CALL    R_READ_RS232_QUEUE       	;Get a character from RS232 receive queue
-    JC      L_TELCOM_TERM_2
+    CALL    L_READ_SERIAL_BUF       	;Get a character from Serial receive queue
+    JC      L_TELCOM_TERM_2				;brif SHIFT_BREAK
     OUTCHR								;Send character in A to screen/printer
     MOV     B,A
     LDA     ECHO_R
@@ -17714,7 +17745,7 @@ L_TELCOM_UP_2:
     JZ      L_TELCOM_UP_3						;brif A == 1AH
     CPI     0AH							;LF
     JNZ     +							;brif A != 0AH
-    LDA     LFFLG_R						;RS232 auto linefeed switch
+    LDA     LFFLG_R						;Serial auto linefeed switch
     ANA     A
     JNZ     +							;brif LFFLG_R != 0
     LDA     TLCMKEY_R
@@ -17723,7 +17754,7 @@ L_TELCOM_UP_2:
     STA     TLCMKEY_R					;update
     JZ      +
     CALL    R_SEND_A_USING_XON       	;Send character in A to serial port using XON/XOFF
-    CALL    L_DRAIN_RS232_IN_QUEUE
+    CALL    L_DRAIN_SERIAL_IN_QUEUE
 +	INX     H
     CALL    R_CHK_KEY_QUEUE				;Check keyboard queue for pending characters
     JZ      L_TELCOM_UP_1
@@ -17739,12 +17770,12 @@ L_TELCOM_UP_3:
     STA     SER_UPDWN_R+1
     JMP     R_DISP_FKEYS				;Display function keys on 8th line
 
-L_DRAIN_RS232_IN_QUEUE:
-    CALL    R_CHECK_RS232_QUEUE      	;Check RS232 queue for pending characters
+L_DRAIN_SERIAL_IN_QUEUE:
+    CALL    L_CHECK_SERIAL_BUF      	;Check Serial Ring Buffer for pending characters
     RZ									;retif empty
-    CALL    R_READ_RS232_QUEUE       	;Get a character from RS232 receive queue
+    CALL    L_READ_SERIAL_BUF       	;Get a character from Serial receive queue
     OUTCHR								;Send character in A to screen/printer
-    JMP     L_DRAIN_RS232_IN_QUEUE
+    JMP     L_DRAIN_SERIAL_IN_QUEUE		;loop
 ;
 ; TELCOM DOWNLOAD function routine
 ;
@@ -17856,7 +17887,7 @@ L_TELCOM_DISCNNCT:
     MOV     L,A							;Clear HL
     MOV     H,A
     SHLD    SER_UPDWN_R
-    CALL    R_UNINIT_RS232_MDM       	;Deactivate RS232 or modem
+    CALL    R_UNINIT_SERIAL_MDM       	;Deactivate Serial or modem
     CALL    R_TURN_CURSOR_OFF			;Turn the cursor off
     CALL    R_DISCONNECT_PHONE       	;Disconnect phone line and disable modem carrier
     CALL    L_FND_END_DO_FILES
@@ -17892,9 +17923,9 @@ R_PRINT_STRING_2:						;5791H
 ;
 R_MENU_ENTRY:							;5797H
     LHLD    MEMSIZ_R					;File buffer area pointer. Also end of Strings Buffer Area.
-    SHLD    STRBUF_R					;BASIC string buffer pointer
+    SHLD    STRP_R						;BASIC string pool pointer
     CALL    R_INIT_BASIC_VARS_2			;Initialize BASIC variables for new execution
-    CALL    R_UNINIT_RS232_MDM       	;Deactivate RS232 or modem
+    CALL    R_UNINIT_SERIAL_MDM       	;Deactivate Serial or modem
     CALL    L_FND_END_DO_FILES
     CALL    LNKFIL						;Fix up the directory start pointers
     CALL    R_INV_CHAR_DISABLE       	;Cancel inverse character mode
@@ -20306,7 +20337,7 @@ L_QUERY_USER:
     CALL    R_SET_CURSOR_POS			;Set the current cursor position
     CALL    R_ERASE_TO_EOL				;Erase from cursor to end of line
     POP     PSW							;restore key
-    LXI     D,INPBUF_R					;Keyboard buffer
+    LXI     D,KBUF_R					;Keyboard buffer
     MVI     B,01H						;counter
     ANA     A
     JMP     L_QUERY_USER_1
@@ -20327,7 +20358,7 @@ L_QUERY_USER_1:
     JMP     R_VECTORTBL_LOOKUP
 
 L_QUERY_USER_END:
-    LXI     D,INPBUF_R				    ;Keyboard buffer
+    LXI     D,KBUF_R				    ;Keyboard buffer
     CALL    R_COPY_STRING       		;Copy NULL terminated string at M to (DE)
     JMP		L_RET_INPBUF_PREDEC
 ;
@@ -20351,13 +20382,13 @@ L_CTRL_CHARS:
 L_CTRL_CHARS_END:
 	
 L_INP_CTRL_C_HANDLER:					;^C handler
-    LXI     D,INPBUF_R					;Keyboard buffer start
+    LXI     D,KBUF_R					;Keyboard buffer start
 L_INP_CR_HANDLER:						;CR handler
     POP     H
     XRA     A
     STAX    D
 L_RET_INPBUF_PREDEC:
-    LXI     H,INPBUF_R-1				;Keyboard buffer
+    LXI     H,KBUF_R-1				;Keyboard buffer
     RET
 
 L_INP_TAB_HANDLER:						;TAB handler
@@ -20404,7 +20435,7 @@ R_TEXT_CTRL_Y_FUN:						;6691H
     STA     OUTFMTWIDTH_R				;Output format width (40 or something else for CTRL-Y)
     STA     PRTFLG_R					;Output device for RST 20H (0=screen)
     LXI     D,PRTBUF_R
-    LXI     H,INPBUF_R				  	;Keyboard buffer
+    LXI     H,KBUF_R				  	;Keyboard buffer
     CALL    R_COPY_STRING         		;Copy NULL terminated string at M to (DE)
     INR     A
     STA     LCDPRT_R					;LCD vs Printer output indication - output to LCD
@@ -21269,7 +21300,7 @@ R_INSERT_A_INTO_FILE:				  	;6B61H
 ;  Return with carry set (out of memory)
 ;  if STRGEND_R + hole size < SP - minimum stack size (120 bytes)
 ;  Move the data between the specified address and STRGEND_R.
-;  Adjust the pointers ASCTAB, BINTAB, VARTAB, ARYTAB and STRGEND_R.
+;  Adjust the pointers ASCTAB_R, BINTAB_R, VARTAB_R, ARYTAB_R and STRGEND_R.
 ;  Return
 ;  It is unnecessary to care about the pointers unless you
 ;  make your own MAKHOL routine. The MAKHOL in Main ROM
@@ -21277,10 +21308,10 @@ R_INSERT_A_INTO_FILE:				  	;6B61H
 ;  revise the starting addresses in the directory fields.
 ;  For this, use LNKFIL.
 ; 
-; NOTE: When you make a hole at ASCTAB to create
+; NOTE: When you make a hole at ASCTAB_R to create
 ;  a new DO file, you have to adjust the pointers
-;  BINTAB, VARTAB, and ARYTAB. ASCTAB must be
-;  modified only when you make a hole at ASCTAB
+;  BINTAB_R, VARTAB_R, and ARYTAB_R. ASCTAB_R must be
+;  modified only when you make a hole at ASCTAB_R
 ;  to register a new BA file.
 ; 
 ;  Obviously, calling MAKHOL too often results in
@@ -21338,10 +21369,10 @@ L_MOV_DATA:
 ;
 ;  This routine performs the reverse operation of MAKHOL.
 ;  The data above the HL + BC is moved up. And the pointers
-;  BINTAB, VARTAB, ARYTAB are modified. If you use this
+;  BINTAB_R, VARTAB_R, ARYTAB_R are modified. If you use this
 ;  routine for shrinking a hole of BA file, you must adjust
-;  ASCTAB with the negated [BC] after exiting this routine,
-;  since MASDEL does not correct ASCTAB.
+;  ASCTAB_R with the negated [BC] after exiting this routine,
+;  since MASDEL does not correct ASCTAB_R.
 ; 
 ;  Also, you can adjust the TXTTAB by using this negated
 ;  BC counter if necessary. You have to adjust TXTTAB when
@@ -21349,13 +21380,13 @@ L_MOV_DATA:
 ;  than that pointed to by TXTTAB.
 ; 
 ;  If you want to utilize this routine for CO file,
-;  you must correct BINTAB after calling MASDEL. MASDEL was
+;  you must correct BINTAB_R after calling MASDEL. MASDEL was
 ;  designed for deleting bytes from a DO file, so it
-;  adjusts BINTAB down by the deletion size. But when
-;  deleting a CO file, BINTAB shouldn't change. To deal
-;  with this, you need to save and restore BINTAB across
+;  adjusts BINTAB_R down by the deletion size. But when
+;  deleting a CO file, BINTAB_R shouldn't change. To deal
+;  with this, you need to save and restore BINTAB_R across
 ;  calls to MASDEL, or add back in the number of bytes you
-;  are deleting to BINTAB.
+;  are deleting to BINTAB_R.
 ;
 ; IN:
 ;	BC		count (negated on exit)
@@ -21512,7 +21543,7 @@ L_SET_STRBUF:
     COMPAR								;Compare [VARTAB_R]+0178H (DE) and [MEMSIZ_R] (HL): HL - DE
     JC      +							;brif [MEMSIZ_R] < ([VARTAB_R]+0178H)
     DCR     H							;HL -= 256
-+	SHLD    STRBUF_R					;BASIC string buffer pointer
++	SHLD    STRP_R						;BASIC string pool pointer
     RET
 ;
 ; Copy key definition area to BASIC Function key table
@@ -21602,7 +21633,7 @@ R_WARM_RESET:							;6CE0H
     MVI     A,0EDH
     OUTPORT	0BAH						;8155 PIO Port B
     XRA     A
-    STA     PORTE8_R					;Contents of port E8H
+    STA     PORTE8_R					;Clear contents of port E8H
     OUTPORT	0E8H						;set Keyboard input and misc. device select
     OUTPORT	0A8H
     CALL    R_CHK_XTRNL_CNTRLER      	;Check for optional external controller
@@ -21669,60 +21700,72 @@ L_SEND_TO_LPT_EXIT:
     POP     B
     RET
 ;
-; Check RS232 queue for pending characters
+; Check Serial Ring Buffer for pending characters
 ;
-R_CHECK_RS232_QUEUE:					;6D6DH
-    LDA     XONFLG_R					;XON/XOFF enable flag
+; OUT:
+;	A		# of pending characters
+;
+L_CHECK_SERIAL_BUF:						;6D6DH
+    LDA     XONXOFFENA_R				;XON/XOFF enable flag
     ORA     A
     JZ		+							;brif not enabled
-    LDA     XONXOFF1_R					;XON/XOFF protocol control
+    LDA     M100XONXOFF_R				;M100 XON/XOFF protocol control
     INR     A							;test if A == 0FFH
-    RZ
-+	LDA     SERCNT_R					;RS232 buffer count
+    RZ									;retif active. return 0
++	LDA     SERCNT_R					;Serial Ring Buffer count
     ORA     A
     RET
 ;
-; Get a character from RS232 receive queue
+; Get a character from Serial receive queue
 ;
-R_READ_RS232_QUEUE:						;6D7EH
+; Returns carry set if SHIFT_BREAK 
+;
+L_READ_SERIAL_BUF:						;6D7EH
     PUSH    H
     PUSH    D
     PUSH    B
     LXI     H,L_POP_WREGS_RET			;exit routine (pop all regs except PSW & RET)
     PUSH    H
-    LXI     H,SERCNT_R				    ;RS232 buffer count
+    LXI     H,SERCNT_R				    ;Serial Ring Buffer count
 -	CALL    R_CHK_SHIFT_BREAK			;Check if SHIFT-BREAK is being pressed
     RC									;retif pressed
-    CALL    R_CHECK_RS232_QUEUE      	;Check RS232 queue for pending characters
+    CALL    L_CHECK_SERIAL_BUF      	;Check Serial Ring Buffer for pending characters
     JZ      -							;brif no pending chars: wait
     CPI     03H							;3 chars in queue?
-    CC      R_SEND_XON				    ;Send XON (CTRL-Q) out RS232 if < 03H
-    DI 
-    DCR     M							;decrement RS232 buffer count
-    CALL    R_INC_RS232_QUEUE_IN     	;Calculate address to save next RS232 character
-    MOV     A,M
-    XCHG								;RS232 Queue ptr to HL
-    INX     H							;ptr += 3
+    CC      R_SEND_XON				    ;Send XON (CTRL-Q) if < 03H: tell terminal or server it's ok to send data
+    DI 									;no serial_in processing
+    DCR     M							;decrement Serial Ring Buffer count
+; HL points to byte before SERTAIL_R
+    CALL    L_SERIAL_BUF_INDEX    	 	;Calculate address to get next Serial character
+    MOV     A,M							;get next Serial character
+;
+; Now check if there are any pending serial errors
+;
+    XCHG								;HL now ptr to Serial TAIL index
+    INX     H							;HL set to &SERERR_R
     INX     H
-    INR     M
-    DCR     M							;decrement count
-    RZ									;retif count == 0
-    DCR     M							;decrement count
-    JZ      +							;brif count == 0
+    INR     M							;test [SERERR_R]
+    DCR     M
+    RZ									;retif [SERERR_R] == 0: return next Serial character
+;
+; pending serial errors
+;
+    DCR     M							;decrement [SERERR_R]. Carry not affected
+    JZ      +							;brif count == 0: return 0FFH
     CMP     A							;set Z flag
     RET
 +	ORI     0FFH						;return 0FFH
     RET
 ;
-; RST 6.5 routine (RS232 receive interrupt)
+; RST 6.5 routine (Serial receive interrupt)
 ;
-R_RST6_5_ISR:							;6DACH
-    CALL    SERHK_R						;RST 6.5 routine (RS232 receive interrupt) hook
+L_SERIAL_IN_ISR:						;6DACH
+    CALL    SERHK_R						;RST 6.5 routine (Serial receive interrupt) hook
     PUSH    H
     PUSH    D
     PUSH    B
     PUSH    PSW
-    LXI     H,R_ISR_EXIT_FUN			; Interrupt exit routine (pop all regs & RET)
+    LXI     H,R_ISR_EXIT_FUN			;Interrupt exit routine (pop all regs, EI & RET)
     PUSH    H
     INPORT	0C8H						;Bidirectional data bus for UART
     LXI     H,PARMSK_R				    ;Serial Ignore Parity Mask byte
@@ -21730,113 +21773,127 @@ R_RST6_5_ISR:							;6DACH
     MOV     C,A							;save Data byte
     INPORT	0D8H						;read Status control register for UART, modem
     ANI     0EH							;00001110 isolate bits 1..3: error conditions
-    MOV     B,A							;save in B
-    JNZ     L_RS232_ISR_1
+    MOV     B,A							;save error conditions in B
+    JNZ     L_SERIAL_STORE				;brif error
     MOV     A,C							;restore Data byte
     CPI     11H							;DC1(XON)
-    JZ      +
+    JZ      +							;brif XON: clear XONXOFF_R
     CPI     13H							;DC3 (XOFF)
-    JNZ     L_RS232_ISR_1
+    JNZ     L_SERIAL_STORE				;brif !XOFF
+; incoming data byte == XOFF: set XONXOFF_R: terminal or server asks M100 to stop sending data
 	SKIP_BYTE_INST						;Sets A to 0AFH
 +	XRA     A
-    STA     XONXOFF_R					;XON/XOFF protocol control
-    LDA     XONFLG_R					;XON/XOFF enable flag
+    STA     XONXOFF_R					;XON/XOFF protocol control from terminal or server to M100
+    LDA     XONXOFFENA_R				;XON/XOFF enable flag
     ORA     A
-    RNZ
-L_RS232_ISR_1:
-    LXI     H,SERCNT_R				    ;RS232 buffer count
-    MOV     A,M
+    RNZ									;retif enabled
+;
+; data byte != (XON or XOFF) or XON/XOFF not enabled
+;
+L_SERIAL_STORE:
+    LXI     H,SERCNT_R				    ;Serial Ring Buffer count
+    MOV     A,M							;get current count
     CPI     MAXSERCNT					;64 max buffer count
-    RZ									;return if full
+    RZ									;retif buffer is full. Ignore incoming char
     CPI     MAXSERCNT-24				;40	getting full?
-    CNC     R_DISABLE_XON_XOFF       	;if >= 40 Turn off XON/XOFF protocol
-    PUSH    B
-    INR     M
-    INX     H
-    CALL    R_INC_RS232_QUEUE_IN     	;Calculate address to save next RS232 character
-    POP     B
-    MOV     M,C
-    MOV     A,B
+    CNC     R_SEND_XMIT_OFF   	    	;if >= 40 send XOFF (transmit off) to terminal or server
+    PUSH    B							;save error conditions and data byte
+    INR     M							;increment Serial Ring Buffer count
+    INX     H							;HL now points to 1 byte before Serial Ring Buffer HEAD index
+    CALL    L_SERIAL_BUF_INDEX   	  	;Calculate address to save next Serial character
+    POP     B							;restore error conditions and data byte
+    MOV     M,C							;store Serial data byte in Serial Ring Buffer
+    MOV     A,B							;error conditions
     ORA     A
-    RZ
-    XCHG
-    INX     H
-    DCR     M
+    RZ									;retif no errors
+;
+; incoming Serial data byte has some error condition
+;
+	XCHG								;ptr to Serial HEAD index to HL
+    INX     H							;HL points to &SERERR_R
+    DCR     M							;test [SERERR_R]
     INR     M
-    RNZ
-    LDA     SERCNT_R					;RS232 buffer count
-    MOV     M,A
+    RNZ									;retif [SERERR_R] != 0
+; [SERERR_R] == 0
+    LDA     SERCNT_R					;Serial Ring Buffer count
+    MOV     M,A							;update [SERERR_R]
     RET
 ;
-; Calculate address to save next RS232 character
+; Calculate address to store or retrieve an Serial character
+; Serial Ring Buffer so we need an index for the head (where to store an incoming
+; char) and an index to the tail (where to retrieve a char)
+;
 ;
 ; IN:
-;	HL		RS232 Queue ptr
+;	HL		ptr to location before the Serial index (HEAD) if receiving or (TAIL) if retrieving a byte
 ; OUT:
-;	DE		RS232 Queue ptr
-;	HL		ptr into RS232 Character buffer
+;	DE		ptr to Serial index (HEAD or TAIL)
+;	HL		ptr into Serial Character buffer where to store or retrieve a byte
 ;
-R_INC_RS232_QUEUE_IN:					;6DFCH
-    INX     H
-    MOV     C,M							;get current count
-    MOV     A,C
+L_SERIAL_BUF_INDEX:						;6DFCH
+    INX     H							;point to real index
+    MOV     C,M							;get HEAD or TAIL index to C
+    MOV     A,C							;and A
     INR     A							;increment mod 64
     ANI     (MAXSERCNT-1)				;3FH
-    MOV     M,A							;update count
-    XCHG							 	;RS232 Queue ptr to DE
-    LXI     H,SERBUF_R				    ;RS232 Character buffer
-    MVI     B,00H						;zero-extend C to BC
-    DAD     B							;index 
+    MOV     M,A							;next index
+    XCHG							 	;ptr to Serial index (HEAD or TAIL) to DE
+    LXI     H,SERBUF_R				    ;Serial Character buffer
+    MVI     B,00H						;zero-extend current HEAD ot TAIL to BC
+    DAD     B							;compute ptr 
     RET
 ;
-; Send XON (CTRL-Q) out RS232
+; Send XON (CTRL-Q) out Serial: tell terminal or server M100 is ready to receive more data
 ;
 R_SEND_XON:								;6E0BH
-    LDA     XONFLG_R					;XON/XOFF enable flag
+    LDA     XONXOFFENA_R				;XON/XOFF enable flag
     ANA     A
-    RZ
+    RZ									;retif not enabled
     LDA     CTRLS_R						;Control-S status
-    DCR     A
-    RNZ
-    STA     CTRLS_R						;Control-S status
+    DCR     A							;test for 1
+    RNZ									;retif ^S not active
+; A == 0
+    STA     CTRLS_R						;Clear Control-S status
     PUSH    B
     MVI     C,11H						;DC1 (XON)
-    JMP     R_SEND_C_TO_RS232			;Send character in C to serial port
+    JMP     R_SEND_C_TO_SERIAL			;Send character in C to serial port
 ;
-; Turn off XON/XOFF protocol
+; Send Transmit Off (XOFF) byte
 ;
-R_DISABLE_XON_XOFF:						;6E1EH
-    LDA     XONFLG_R					;XON/XOFF enable flag
+R_SEND_XMIT_OFF:						;6E1EH
+    LDA     XONXOFFENA_R				;XON/XOFF enable flag
     ANA     A
-    RZ
+    RZ									;retif not enabled
     LDA     CTRLS_R						;Control-S status
     ORA     A
-    RNZ
-    INR     A
-    STA     CTRLS_R						;Control-S status
+    RNZ									;retif ^S active
+; A == 0
+    INR     A							;A = 1
+    STA     CTRLS_R						;Set Control-S status
     PUSH    B
     MVI     C,13H						;DC3 (XOFF)
-    JMP     R_SEND_C_TO_RS232			;Send character in C to serial port
+    JMP     R_SEND_C_TO_SERIAL			;Send Transmit Off in C to serial port
 ;
 ; Send character in A to serial port using XON/XOFF
 ;
 R_SEND_A_USING_XON:						;6E32H
     PUSH    B							;save BC
     MOV     C,A							;character to send to C
-    CALL    R_XON_XOFF_HANDLER       	;Handle XON/XOFF protocol
-    JC      L_RS232_SEND_EXIT			;BC on stack
+    CALL    L_XONXOFF_HANDLER       	;Handle XON/XOFF protocol
+    JC      L_SERIAL_SEND_EXIT			;brif if SHIFT-BREAK pressed. BC on stack
 ;
 ; Send character in C to serial port
+; BC on stack
 ;
-R_SEND_C_TO_RS232:						;6E3AH
+R_SEND_C_TO_SERIAL:						;6E3AH
     CALL    R_CHK_SHIFT_BREAK			;Check if SHIFT-BREAK is being pressed
-    JC      L_RS232_SEND_EXIT			;brif pressed
+    JC      L_SERIAL_SEND_EXIT			;brif pressed
     INPORT	0D8H						;read Status control register for UART, modem
     ANI     10H							;00010000 isolate bit 4: Transmit buffer empty
-    JZ      R_SEND_C_TO_RS232			;Send character in C to serial port
+    JZ      R_SEND_C_TO_SERIAL			;loop until ready
     MOV     A,C
     OUTPORT	0C8H
-L_RS232_SEND_EXIT:
+L_SERIAL_SEND_EXIT:
     MOV     A,C
     POP     B							;restore BC
     RET
@@ -21846,43 +21903,51 @@ L_RS232_SEND_EXIT:
 ; IN:
 ;	C		character to send
 ;
-R_XON_XOFF_HANDLER:						;6E4DH
-    LDA     XONFLG_R					;XON/XOFF enable flag
+L_XONXOFF_HANDLER:						;6E4DH
+    LDA     XONXOFFENA_R				;XON/XOFF enable flag
     ORA     A
     RZ									;retif not enabled
     MOV     A,C
     CPI     11H							;DC1(XON, ^Q)
-    JNZ     +							;brif !XON
-    XRA     A
+    JNZ     +							;brif !XON (Transmit On)
+; sending Transmit On (XON) to terminal or server: M100 ready to receive serial data
+    XRA     A							;Clear ^S status
     STA     CTRLS_R						;Control-S status
-    JMP     L_XON_XOFF_1
+    JMP     L_XONXOFF_1					;A == 0
 +	SUI     13H							;DC3 (XOFF, ^S)
-    JNZ     L_XON_XOFF_2				;brif !XOFF
-    DCR     A							;A = 0FFH
-L_XON_XOFF_1:
-    STA     XONXOFF1_R					;XON/XOFF protocol control
+    JNZ     L_XONXOFF_2	;brif !XOFF (Transmit Off)
+; sending Transmit Off (XOFF) to terminal or server: M100 NOT ready to receive serial data
+; A == 0
+    DCR     A							;sending XOFF. A = 0FFH
+L_XONXOFF_1:
+    STA     M100XONXOFF_R				;update M100 XON/XOFF protocol control status
     RET
-L_XON_XOFF_2:
+;
+; ready to send data byte in C but need to make sure terminal or server is
+; ready to accept data. If XONXOFF_R is set, terminal or server is not ready
+; Loop while processing serial_in interrupts until we receive XON from terminal or server
+;
+L_XONXOFF_2:
 	CALL    R_CHK_SHIFT_BREAK			;Check if SHIFT-BREAK is being pressed
     RC									;retif pressed
-    LDA     XONXOFF_R					;XON/XOFF protocol control
+    LDA     XONXOFF_R					;XON/XOFF protocol control from terminal or server to M100
     ORA     A
-    JNZ     L_XON_XOFF_2				;brif XONXOFF_R active
+    JNZ     L_XONXOFF_2					;loop while XONXOFF_R active
     RET
 ;
-; Set RS232 baud rate stored in H
+; Set Serial baud rate stored in H
 ;
-R_SET_RS232_BAUD_RATE:				    ;6E75H
+R_SET_SERIAL_BAUD_RATE:				    ;6E75H
     PUSH    H							;save HL
     MOV     A,H
     RLC    								;times 2
-    LXI     H,R_RS232_BAUD_TIMER_VALS-2	;Code Based. 
+    LXI     H,R_SERIAL_BAUD_TIMER_VALS-2	;Code Based. 
     MVI     D,00H						;zero extend A to DE
     MOV     E,A
     DAD     D							;index
     SHLD    BAUDRT_R					;ptr to UART baud rate timer value
     POP     H							;restore HL
-L_RS232_SET_1:							;reset 8155
+L_SERIAL_SET_1:							;reset 8155
     PUSH    H							;save HL
     LHLD    BAUDRT_R					;UART baud rate timer value (word)
     MOV     A,M							;to BC/BD
@@ -21895,17 +21960,17 @@ L_RS232_SET_1:							;reset 8155
     POP     H							;restore HL
     RET
 ;
-; RS232 baud rate timer values
+; Serial baud rate timer values
 ;
-R_RS232_BAUD_TIMER_VALS:				;6E94H
+R_SERIAL_BAUD_TIMER_VALS:				;6E94H
     DW      4800H, 456BH, 4200H
     DW      4100H, 4080H, 4040H
     DW      4020H, 4010H, 4008H
 ;
-; Initialize RS232 or modem
+; Initialize Serial or modem
 ; Input Carry, HL
 ;
-R_INIT_RS232_MDM:						;6EA6H
+R_INIT_SERIAL_MDM:						;6EA6H
     PUSH    H							;save all registers
     PUSH    D
     PUSH    B
@@ -21913,28 +21978,28 @@ R_INIT_RS232_MDM:						;6EA6H
     MVI     B,25H
     JC      +
     MVI     H,03H
-    MVI     B,2DH
+    MVI     B,2DH						;00101101
 +	DI 
-    CALL    R_SET_RS232_BAUD_RATE    	;Set RS232 baud rate stored in H
+    CALL    R_SET_SERIAL_BAUD_RATE    	;Set Serial baud rate stored in H
     MOV     A,B
     OUTPORT	0BAH						;8155 PIO Port B
     INPORT	0D8H						;read Status control register for UART, modem
     MOV     A,L
     ANI     1FH							;00011111 clear bits 5,6,7
     OUTPORT	0D8H
-    CALL    R_INIT_SER_BUF_PARAMS    	;Initialize serial buffer parameters
+    CALL    R_INIT_SER_BUF_PARAMS    	;Initialize serial buffer parameters. Returns 0 in A
     DCR     A							;A == 0FFH
-    STA     SERINIT_R					;RS232 initialization status
+    STA     SERINIT_R					;Serial initialization status
     JMP     R_ISR_EXIT_FUN				;Interrupt exit routine (pop all regs & RET)
 ;
-; Deactivate RS232 or modem
+; Deactivate Serial or modem
 ;
-R_UNINIT_RS232_MDM:						;6ECBH
+R_UNINIT_SERIAL_MDM:					;6ECBH
     INPORT	0BAH						;read 8155 PIO Port B
     ORI     0C0H						;11000000
     OUTPORT	0BAH						;set 8155 PIO Port B
     XRA     A
-    STA     SERINIT_R					;clear RS232 initialization status
+    STA     SERINIT_R					;clear Serial initialization status
     RET
 
 	if HWMODEM
@@ -22018,7 +22083,7 @@ R_ENABLE_XON_XOFF:						;6F31H
 R_CLR_XON_XOFF:							;6F32H
     XRA     A
     DI 
-    STA     XONFLG_R					;XON/XOFF enable flag
+    STA     XONXOFFENA_R				;XON/XOFF enable flag
     EI     
     RET
 ;
@@ -22028,9 +22093,10 @@ R_INIT_SER_BUF_PARAMS:				  	;6F39H
     XRA     A							;clear A, HL
     MOV     L,A
     MOV     H,A
-    SHLD    XONXOFF_R					;XON/XOFF protocol controls
-    SHLD    SERCNT_R					;RS232 buffer count
-    SHLD    SERPTR_R					;RS232 buffer input pointer
+    SHLD    XONXOFF_R					;XON/XOFF protocol controls (2 bytes)
+; clear 4 bytes
+    SHLD    SERCNT_R					;Serial Ring Buffer count, Serial TAIL index
+    SHLD    SERHEAD_R					;Serial HEAD index, Serial Error
     RET
 ;
 ; Write cassette header and sync byte
@@ -22569,7 +22635,7 @@ L_ENA_INT_75_65_POP:
     MVI     A,09H						;00001001 MSE==1 Unmask 7.5 & 6.5. Mask INT 5.5
     SIM    
 ;
-; Interrupt exit routine (pop all regs & RET)
+; Interrupt exit routine (pop all regs, enable interrupts & RET)
 ;
 R_ISR_EXIT_FUN:							;71F7H
     POP     PSW
@@ -22801,7 +22867,7 @@ L_BEEP_RESET:							;called by vt100.asm with A==01H
     ORI     04H							;00000100. Beep toggle
 										;	(1-Data from bit 5, 0-Data from 8155 timer)
     OUTPORT	0BAH						;set 8155 PIO Port B. Turn off tone
-    CALL    L_RS232_SET_1				;reset 8155
+    CALL    L_SERIAL_SET_1				;reset 8155
     EI     
     RET
 
@@ -24416,7 +24482,7 @@ L_NOT_AUTOPWR:
 ;
 +	LXI     H,IPLNAM_R  				;Start of IPL filename
     SHLD    FNKMAC_R					;Get pointer to FKey text (from FKey table) for selected FKey
-    LHLD    STRBUF_R    				;BASIC string buffer pointer
+    LHLD    STRP_R	    				;BASIC string pool pointer
     SPHL
     CALL    BOOTHK_R					;normally just returns unless VT100
     CALL    L_INIT_BASIC				;Initialize BASIC for new execution
@@ -24428,13 +24494,13 @@ L_BOOT_2:								;A == 0 entry
     CALL    R_WARM_RESET				;Warm start reset entry
     XRA     A							;clear A
     STA     PWROFF_R   					;Power off exit condition switch
-    LDA     SERINIT_R    				;RS232 initialization status
+    LDA     SERINIT_R    				;Serial initialization status
     ANA     A							;test
     RZ									;retif SERINIT_R == 0
     LXI     H,SERMOD_R-1				;Serial initialization string-1
     CHRGET	         					;Get next non-white char from M
     CNC     L_INCHL						;Increment HL
-    JMP     R_SET_RS232_PARAMS      	;Set RS232 parameters from string at M
+    JMP     R_SET_SERIAL_PARAMS      	;Set Serial parameters from string at M
 ;
 ; Cold boot routine
 ;
@@ -24504,7 +24570,7 @@ R_COLD_BOOT:							;7DE7H
     STA     EOSMRK_R					;End of statement marker == ':'
     LXI     H,UNUSED7_R
     SHLD    PRMPRV_R
-    SHLD    STRBUF_R				    ;BASIC string buffer pointer
+    SHLD    STRP_R					    ;BASIC string pool pointer
     SHLD    MEMSIZ_R					;File buffer area pointer. Also end of Strings Buffer Area.
     MVI     A,01H
     STA     VARTAB_R+1					;0FBB3H
@@ -24548,7 +24614,7 @@ R_DISP_MODEL:							;7EA6H
 R_DISP_FREE_BYTES:						;7EACH
     LHLD    VARTAB_R					;Start of variable data pointer
     XCHG
-    LHLD    STRBUF_R					;BASIC string buffer pointer
+    LHLD    STRP_R						;BASIC string pool pointer
     MOV     A,L							;HL -= DE
     SUB     E
     MOV     L,A
@@ -24641,28 +24707,28 @@ L_UPD_FILEBUFS:
     DCR     A							;MAXFILES cnt
     JP      -							;Loop while A >= 0
     XCHG								;new File Buffer Area Start Address to DE
-    LHLD    STRBUF_R					;BASIC string buffer pointer
+    LHLD    STRP_R						;BASIC string pool pointer
     MOV     B,H							;BC = HL
     MOV     C,L
     LHLD    MEMSIZ_R					;File buffer area pointer. Also end of Strings Buffer Area.
-; compute size of String Buffer Area.
-    MOV     A,L							;HL = [MEMSIZ_R] - [STRBUF_R]
+; compute size of String pool.
+    MOV     A,L							;HL = [MEMSIZ_R] - [STRP_R]
     SUB     C
     MOV     L,A
     MOV     A,H
     SBB     B
     MOV     H,A
     POP     PSW							;restore new MAXFILES value
-    PUSH    H							;save size of String Buffer Area
+    PUSH    H							;save size of String pool
     PUSH    PSW							;save new MAXFILES value
     LXI     B,008CH						;140
-    DAD     B							;BC = size of String Buffer Area + 140
+    DAD     B							;BC = size of String pool + 140
     MOV     B,H
     MOV     C,L
     LHLD    VARTAB_R					;Start of variable data
-    DAD     B							;HL = [VARTAB_R] + size of String Buffer Area + 140
+    DAD     B							;HL = [VARTAB_R] + size of String pool + 140
     COMPAR								;HL - new File Buffer Area Start Address
-    JNC     L_OUTOFMEMORY				;brif [VARTAB_R] + size of String Buffer Area + 140 >=  new File Buffer Area Start Address
+    JNC     L_OUTOFMEMORY				;brif [VARTAB_R] + size of String pool + 140 >=  new File Buffer Area Start Address
     POP     PSW							;restore new MAXFILES value
     STA     MAXFILES_R					;update Maxfiles
     MOV     L,E							;HL = new File Buffer Area Start Address
@@ -24671,14 +24737,14 @@ L_UPD_FILEBUFS:
     DCX     H
     DCX     H
     SHLD    MEMSIZ_R					;File buffer area pointer
-    POP     B							;restore size of String Buffer Area
-    MOV     A,L							;compute start of String Buffer Area
+    POP     B							;restore size of String pool
+    MOV     A,L							;compute start of String pool
     SUB     C
     MOV     L,A
     MOV     A,H
     SBB     B
     MOV     H,A
-    SHLD    STRBUF_R					;BASIC string buffer area pointer
+    SHLD    STRP_R						;BASIC string pool area pointer
     DCX     H							;decreement by 2
     DCX     H
     POP     B							;pop return address

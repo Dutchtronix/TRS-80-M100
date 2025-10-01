@@ -109,7 +109,6 @@ hk_chget:
 ; this routine is hit once, when console flag is set to 1
 ;
 hk_newconsole:
-
 	POP		H
 	LDA		LINPROT_R					;Get Label line protect status
 	push	PSW							;Save current Label Line Protect status to stack
@@ -226,7 +225,7 @@ setnewcons:
 init_RS232:								;init serial port		
 	lxi		h,RS232						;Code based. 19200 8N1
 	stc
-	call	R_SET_RS232_PARAMS			;Set RS232 parameters from string at M
+	call	R_SET_SERIAL_PARAMS			;Set serial parameters from string at M
 	ret
 
 screen_RS232:
